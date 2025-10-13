@@ -1,6 +1,5 @@
 {
   "dependencies": [
-    "flecs",
-    "fmt"
+    "flecs"
   ]
 }
