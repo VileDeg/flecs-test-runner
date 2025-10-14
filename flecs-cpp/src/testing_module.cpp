@@ -11,6 +11,7 @@ namespace testing {
 
 namespace {
 
+    // ============================================================================================
     bool compareWorlds(flecs::world& world1, flecs::world& world2) {
         std::cout << "\nWorld Comparison (using serialization):\n";
         std::cout << "========================================\n";
@@ -44,7 +45,7 @@ namespace {
         return matches;
     }
 
-    // ================================================================================================
+    // ============================================================================================
     void registerReflection(flecs::world& world) {
         world.component<std::string>()
             .opaque(flecs::String) // Opaque type that maps to string
@@ -70,12 +71,11 @@ namespace {
             .member<std::vector<SystemInvocation>>("systems")
             .member<std::string>("scriptActual")
             .member<std::string>("scriptExpected")
-            .member<bool>("executed")
             .member<bool>("passed");
 
     }
 
-    // ================================================================================================
+    // ============================================================================================
     void runSystem(flecs::world& world, const SystemInvocation& sys) {
         // Lookup the system by name
         flecs::entity systemEntity = world.lookup(sys.name.c_str());
@@ -117,12 +117,8 @@ moduleImpl::moduleImpl(flecs::world& world) {
 
     world.system<UnitTest>("TestRunner")
         .kind(flecs::OnUpdate)
+        .without<UnitTest::Executed>()
         .each([this](flecs::entity e, UnitTest& test) {
-            // TODO: maybe make as query? Iterate only over ones that have false
-            if(test.executed) {
-                return;
-            }
-
             std::cout << "Running test: " << e.name() << "\n";
 
             // Create ACTUAL world
@@ -130,7 +126,6 @@ moduleImpl::moduleImpl(flecs::world& world) {
             // Import testable systems & components
             modulesProvider(worldActual);
             worldActual.script_run("Script (Actual)", test.scriptActual.c_str());
-
 
             for(auto& sys : test.systems) {
                 runSystem(worldActual, sys);
@@ -142,7 +137,8 @@ moduleImpl::moduleImpl(flecs::world& world) {
             worldExpected.script_run("Script (Expected)", test.scriptExpected.c_str());
 
             test.passed = compareWorlds(worldActual, worldExpected);
-            test.executed = true;
+
+            e.add<UnitTest::Executed>();
         });
 }
 
@@ -153,6 +149,10 @@ void testing::initializeTests(
 ) {
     moduleImpl::modulesProvider = modulesProvider;
     world.import<moduleImpl>();
+
+    /* TODO:
+    * Maybe automatically assign kind 0 to all systems here? 
+    */
 }
 
 }

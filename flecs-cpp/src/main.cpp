@@ -119,6 +119,11 @@ int manual() {
         scriptExpected
     );
 
+    std::cout << "Progress 0\n";
+    ecs.progress();
+
+    // Expect no tests to be run (got Executed tag)
+    std::cout << "Progress 1\n";
     ecs.progress();
 
     return 0;

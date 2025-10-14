@@ -8,25 +8,22 @@
 
 namespace testing {
     /* TODO:
-    * provide some way to modify system execution conditions.
-    * E.g. allow to add dependency on some phase, 
-    * or be triggered by an event etc.
+    * Maybe suppor system triggered by an event?
     * */
 
     struct SystemInvocation {
         std::string name;
         int timesToRun;
-        // TODO: extend for other run parameters, maybe add phase etc.
-        // TODO: add support for custom pipeline?
     };
 
     struct UnitTest {
+        struct Executed {};
+
         std::vector<SystemInvocation> systems;
 
         std::string scriptActual;
         std::string scriptExpected;
 
-        bool executed = false;
         bool passed = false;
     };
 

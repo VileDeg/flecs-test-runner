@@ -11,7 +11,9 @@ namespace testable {
             .member<float>("y");
 
         world.system<Position, const Velocity>("move")
-            // TODO: is there a better way?
+            /* TODO: is there a better way ?
+            * Maybe automatically assign kind 0 after import by testing logic? 
+            */
             .kind(0) // Prevent being registered to a pipeline
             .each([](Position& p, const Velocity& v) {
                 p.x += v.x;
