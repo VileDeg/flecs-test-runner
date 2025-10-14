@@ -17,13 +17,11 @@ struct Count {
 };
 
 
-
-
 static void modulesProvider(flecs::world& world) {
     world.import<testable::movement>();
 }
 
-int rest_scenario(int argc, char* argv[]) {
+int remote(int argc, char* argv[]) {
     // Passing in the command line arguments will allow the explorer to display
     // the application name.
     flecs::world ecs(argc, argv);
@@ -110,24 +108,16 @@ int manual() {
         }
     )";
 
+
+    std::vector<testing::SystemInvocation> sys = {
+        { "testable::movement::move", 1 }
+    };
     testing::addTestEntity(
         ecs, "TestEntity0",
-
-        "testable::movement::move",
-        1,
+        sys,
         scriptActual, 
         scriptExpected
     );
-
-    //ecs.entity("UnitTest0")
-    //    .set<UnitTest>({ 
-    //        //"move", 
-    //        "testable::movement::move",
-    //        //"movement.move",
-    //        1, 
-    //        scriptActual, 
-    //        scriptExpected
-    //    });
 
     ecs.progress();
 
@@ -137,7 +127,7 @@ int manual() {
 
 
 int main(int argc, char *argv[]) {
-    //*/
+    /*/
     int ret = rest_scenario(argc, argv);
     /*/
     int ret = manual();
