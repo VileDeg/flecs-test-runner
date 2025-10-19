@@ -1,8 +1,8 @@
-cmake_minimum_required(VERSION 3.10)
+cmake_minimum_required(VERSION 3.14)
 
 set(PROJECT_NAME "FlecsSample")
-set(SRC_DIR "src")
-set(BIN_DIR "bin")
+#set(SRC_DIR "src")
+#set(BIN_DIR "bin")
 
 
 # Set the project name and version
@@ -30,24 +30,33 @@ FetchContent_Declare(
     #GIT_TAG master # Use the latest version; replace with a specific tag if needed
 )
 
-FetchContent_MakeAvailable(flecs)
 
 
-# Recursively find all .cc and .h files in src directory
-file(GLOB_RECURSE SOURCES
-  "${SRC_DIR}/*.cpp"
-  "${SRC_DIR}/*.h"
+# Declare the dependency: Download Google Test from GitHub
+FetchContent_Declare(
+    googletest
+    GIT_REPOSITORY https://github.com/google/googletest.git
+    GIT_TAG        52eb8108c5bdec04579160ae17225d66034bd723 # release 1.17.0
 )
 
-# Print found files (optional, for debugging)
-message(STATUS "Found source files:")
-foreach(source ${SOURCES})
-  get_filename_component(filename ${source} NAME)
-  message(STATUS "  ${filename}")
-endforeach()
+# For Windows: Prevent overriding the parent project's compiler/linker settings
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+# Make the targets available (downloads the source and runs its CMake)
+FetchContent_MakeAvailable(flecs googletest)
+# Now targets like GTest::gtest_main are available
+
+# --- Add Application and Tests ---
+
+# 1. Add your application's source code/library
+add_subdirectory(src) 
+
+# 2. Include the tests directory
+add_subdirectory(tests)
 
 
-add_executable(${PROJECT_NAME} ${SOURCES})
+
+
+#add_executable(${PROJECT_NAME} ${SOURCES})
 
 
 
@@ -56,10 +65,5 @@ add_executable(${PROJECT_NAME} ${SOURCES})
 # set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD_REQUIRED ON)
 
 
-# Add src directory to include path so headers can be found
-target_include_directories(${PROJECT_NAME} PRIVATE ${SRC_DIR})
 
-#add_subdirectory("C:/dev/flecs/flecs" "C:/dev/flecs/flecs/bin")
-#target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR})
-target_link_libraries(${PROJECT_NAME} flecs::flecs_static)
 
