@@ -17,17 +17,31 @@ namespace test_runner {
     };
 
     struct UnitTest {
+        // Tags
         struct Executed {};
+        struct Passed {};
+
+        /*struct Result {
+            std::string name;
+            bool passed = false;
+        };*/
+
+        std::string name;
 
         std::vector<SystemInvocation> systems;
 
         std::string scriptActual;
         std::string scriptExpected;
 
-        bool passed = false;
+        //bool passed = false;
     };
 
+    
+
     void initializeTests(flecs::world& world, std::function<void(flecs::world&)> modulesProvider);
+
+    // TODO: move to UnitTest project and instead use http port to get results and add entities
+    /*std::vector<UnitTest::Result> getAllTestResults();*/
 
     template <typename... Args>
     inline static void addTestEntity(flecs::world& world, const char* name, Args&&... args) {

@@ -2,6 +2,8 @@ import { useState } from 'react'
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 
+//import flecs from '../flecs.js'
+
 import './App.css'  
 
 import { Container, Title, Subtitle, Button, Output } from './styles'
@@ -21,6 +23,13 @@ const App = () => {
   // Fetch entities from the Flecs REST API
   const fetchEntities = async () => {
     try {
+      
+      //let conn = flecs.connect("localhost");
+      // let conn = flecs.connect({
+      //   host: "localhost"
+      // });
+      //console.log("REACEHD HERE");
+      //const response = conn.entity(`Sun`);
       const response = await fetch(`${BASE_URL}/entity/Sun`);
       if (!response.ok) {
         throw new Error(`Failed to fetch entities: ${response.statusText}`);
@@ -29,15 +38,15 @@ const App = () => {
       setEntities(data);
     } catch (error) {
       //setEntities(null);
-      //setEntities({ error: error.message });
-      console.error("Error fetch entities");
+      setEntities({ error: error.message });
+      //console.error("Error fetch entities");
     }
   };
   
   // Create an entity named UnitTestN and add a UnitTest component
   const createUnitTestEntity = async () => {
-    const entityName = `UnitTest0`; // Replace N with a unique identifier if needed
-    const systemName = "SystemToRun"; // Replace with the name of the system to run
+    const entityName = `UnitTest0`; 
+    const systemName = "SystemToRun";
 
     const entityData = {
       path: entityName,
@@ -50,6 +59,9 @@ const App = () => {
 
     // Create entity
     try {
+      //let conn = flecs.connect("localhost");
+      
+      
       const response = await fetch(`${BASE_URL}/entity/${entityName}`, {
         method: "PUT",
         // headers: {
@@ -75,7 +87,12 @@ const App = () => {
     
     // Add component
     try {
-      const response = await fetch(`${BASE_URL}/entity/${entityName}`, {
+      const url = new URL(`${BASE_URL}/component/${entityName}?`);
+      url.searchParams.set("component", "test_runner.UnitTest");
+      url.searchParams.set("value", "{\"systemName\":\"testSystem\"}");
+
+      
+      const response = await fetch(url.toString(), {
         method: "PUT",
         // headers: {
         //   "Content-Type": "application/json",
@@ -84,18 +101,18 @@ const App = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to create entity: ${response.statusText}`);
+        throw new Error(`Failed to create component: ${response.statusText}`);
       }
 
       const data = await response.json();
-      console.log("Entity created:", data);
+      console.log("Test component added:", data);
       
       
-      setResponseMessage(`Entity ${entityName} created successfully!`);
+      setResponseMessage(`Component for ${entityName} created successfully!`);
       
     } catch (error) {
-      setResponseMessage(`Error creating entity: ${error instanceof Error ? error.message : "Unknown error"}`);
-      console.error("Error creating entity:", error);
+      setResponseMessage(`Error creating component: ${error instanceof Error ? error.message : "Unknown error"}`);
+      console.error("Error creating component:", error);
     }
   };
 

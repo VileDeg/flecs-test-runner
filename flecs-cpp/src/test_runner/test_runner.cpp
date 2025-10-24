@@ -68,10 +68,11 @@ namespace {
 
         // TODO: maybe use some template magic to add reflection?
         world.component<UnitTest>()
+            .member<std::string>("name")
             .member<std::vector<SystemInvocation>>("systems")
             .member<std::string>("scriptActual")
-            .member<std::string>("scriptExpected")
-            .member<bool>("passed");
+            .member<std::string>("scriptExpected");
+            //.member<bool>("passed");
 
     }
 
@@ -119,7 +120,7 @@ moduleImpl::moduleImpl(flecs::world& world) {
         .kind(flecs::OnUpdate)
         .without<UnitTest::Executed>()
         .each([this](flecs::entity e, UnitTest& test) {
-            std::cout << "Running test: " << e.name() << "\n";
+            std::cout << "Running test: " << test.name << "\n";
 
             // Create ACTUAL world
             flecs::world worldActual;
@@ -136,11 +137,18 @@ moduleImpl::moduleImpl(flecs::world& world) {
             modulesProvider(worldExpected);
             worldExpected.script_run("Script (Expected)", test.scriptExpected.c_str());
 
-            test.passed = compareWorlds(worldActual, worldExpected);
-
+            if(compareWorlds(worldActual, worldExpected)) {
+                e.add<UnitTest::Passed>();
+            }
             e.add<UnitTest::Executed>();
         });
 }
+
+// ================================================================================================
+//std::vector<UnitTest::Result> test_runner::getAllTestResults()
+//{
+//    return std::vector<UnitTest::Result>();
+//}
 
 // ================================================================================================
 void test_runner::initializeTests(

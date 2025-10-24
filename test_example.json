@@ -1,0 +1,5 @@
+{
+  "name" :  "testMovement",
+  "scriptActual" : "using modules.movement\n\nTestEntity {\n    Position: {x: 10.0, y: 20.0}\n    Velocity: {x: 1.0, y: 2.0}\n}",
+  "scriptExpected" : "using modules.movement\n\nTestEntity {\n    Position: {x: 11.0, y: 22.0}\n    Velocity: {x: 1.0, y: 2.0}\n}",
+}
