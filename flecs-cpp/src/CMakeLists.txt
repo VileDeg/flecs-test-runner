@@ -1,26 +1,17 @@
-set(EXE_NAME "FlecsTestRunner")
-set(SRC_DIR "./")
-#set(BIN_DIR "bin")
+set(TEST_RUNNER_LIB_NAME TestRunner)
+set(TEST_RUNNER_DIR "test_runner")
+set(TEST_RUNNER_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${TEST_RUNNER_DIR}/include/")
 
-include(../Functions.cmake)
-discover_sources(${SRC_DIR} SRC_FILES)
+set(SHARED_DIR_ROOT "shared")
+
+set(SHARED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/${SHARED_DIR_ROOT}")
+
+set(MODULES_LIB_NAME Modules)
+set(MODULES_DIR "MODULES")
+set(MODULES_INCLUDE_DIR "${SHARED_DIR}/${MODULES_DIR}/include")
 
 
-# Add the test executable
-add_executable(
-    ${EXE_NAME} 
-    ${SRC_FILES}
-)
-
-# Add src directory to include path so headers can be found
-target_include_directories(
-  ${EXE_NAME} 
-  PRIVATE 
-    ${SRC_DIR}
-)
-
-target_link_libraries(
-  ${EXE_NAME}
-  PRIVATE
-    flecs::flecs_static
-)
+add_subdirectory(${SHARED_DIR_ROOT}) 
+add_subdirectory(test_runner) 
+add_subdirectory(core) 
+add_subdirectory(tests)

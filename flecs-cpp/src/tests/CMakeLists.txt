@@ -1,8 +1,8 @@
 set(EXE_NAME "Tests")
 set(SRC_DIR "./")
-#set(BIN_DIR "bin")
+#set(SHARED_DIR "../shared/")
 
-include(../Functions.cmake)
+#include(../Functions.cmake)
 discover_sources(${SRC_DIR} SRC_FILES)
 
 enable_testing()
@@ -19,7 +19,9 @@ target_include_directories(
   ${EXE_NAME} 
   PRIVATE 
     ${SRC_DIR}
-    "../src"
+    ${TEST_RUNNER_INCLUDE_DIR}
+    ${MODULES_INCLUDE_DIR}
+    #${SHARED_DIR}
 )
 
 
@@ -27,8 +29,9 @@ target_link_libraries(
   ${EXE_NAME}
   PRIVATE
     GTest::gtest_main   
-    flecs::flecs_static
-    
+    flecs::flecs_static # TODO: remove?
+    ${TEST_RUNNER_LIB_NAME}
+    ${MODULES_LIB_NAME}
 )
 
 

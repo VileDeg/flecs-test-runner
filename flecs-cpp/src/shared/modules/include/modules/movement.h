@@ -1,6 +1,6 @@
 #include <flecs.h>
 
-namespace testable {
+namespace modules {
     struct Position {
         float x;
         float y;

@@ -3,8 +3,8 @@
 
 #include <flecs.h>
 
-#include "testing_module.h"
-#include "movement_module.h"
+#include <test_runner/test_runner.h>
+#include <modules/movement.h>
 
 using mass = flecs::units::mass;
 
@@ -17,16 +17,14 @@ struct Count {
 };
 
 
-static void modulesProvider(flecs::world& world) {
-    world.import<testable::movement>();
-}
-
 int remote(int argc, char* argv[]) {
     // Passing in the command line arguments will allow the explorer to display
     // the application name.
     flecs::world ecs(argc, argv);
 
-    testing::initializeTests(ecs, modulesProvider);
+    test_runner::initializeTests(ecs, [](flecs::world& world) {
+        world.import<modules::movement>();
+    });
 
     ecs.import<flecs::units>();
     ecs.import<flecs::stats>(); // Collect statistics periodically
@@ -83,59 +81,8 @@ int remote(int argc, char* argv[]) {
 }
 
 
-
-int manual() {
-    flecs::world ecs;
-
-    testing::initializeTests(ecs, modulesProvider);
-    
-
-    const char* scriptActual = R"(
-        using testable.movement
-
-        TestEntity {
-            Position: {x: 10.0, y: 20.0}
-            Velocity: {x: 1.0, y: 2.0}
-        }
-    )";
-
-    const char* scriptExpected = R"(
-        using testable.movement
-
-        TestEntity {
-            Position: {x: 11.0, y: 22.0}
-            Velocity: {x: 1.0, y: 2.0}
-        }
-    )";
-
-
-    std::vector<testing::SystemInvocation> sys = {
-        { "testable::movement::move", 1 }
-    };
-    testing::addTestEntity(
-        ecs, "TestEntity0",
-        sys,
-        scriptActual, 
-        scriptExpected
-    );
-
-    std::cout << "Progress 0\n";
-    ecs.progress();
-
-    // Expect no tests to be run (got Executed tag)
-    std::cout << "Progress 1\n";
-    ecs.progress();
-
-    return 0;
-}
-
-
-
 int main(int argc, char *argv[]) {
-    /*/
-    int ret = rest_scenario(argc, argv);
-    /*/
-    int ret = manual();
-    //*/
+    int ret = remote(argc, argv);
+
     return ret;
 }

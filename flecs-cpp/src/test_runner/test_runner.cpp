@@ -1,13 +1,13 @@
 #pragma once
 
-#include "testing_module.h"
+#include <test_runner/test_runner.h>
 
 #include <string>
 #include <iostream>
 
-#include "utils/reflection.h"
+#include <utils/reflection.h>
 
-namespace testing {
+namespace test_runner {
 
 namespace {
 
@@ -143,7 +143,7 @@ moduleImpl::moduleImpl(flecs::world& world) {
 }
 
 // ================================================================================================
-void testing::initializeTests(
+void test_runner::initializeTests(
     flecs::world& world, 
     std::function<void(flecs::world&)> modulesProvider
 ) {

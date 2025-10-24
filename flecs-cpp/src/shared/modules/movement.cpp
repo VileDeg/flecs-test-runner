@@ -1,6 +1,6 @@
-#include "movement_module.h"
+#include <modules/movement.h>
 
-namespace testable {
+namespace modules {
     movement::movement(flecs::world& world) {
         world.component<Position>()
             .member<float>("x")

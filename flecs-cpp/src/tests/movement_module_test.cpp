@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
+#include <test_runner/test_runner.h>
 
-#include <testing_module.h>
-#include <movement_module.h>
+#include <modules/movement.h>
 
 int add(int a, int b) {
     return a + b;
@@ -11,11 +11,13 @@ int add(int a, int b) {
 TEST(Calculator, AddPositive) {
   flecs::world ecs;
 
-  testing::initializeTests(ecs, modulesProvider);
+  test_runner::initializeTests(ecs, [](flecs::world& world) {
+      world.import<modules::movement>();
+  });
 
 
   const char* scriptActual = R"(
-        using testable.movement
+        using modules.movement
 
         TestEntity {
             Position: {x: 10.0, y: 20.0}
@@ -24,7 +26,7 @@ TEST(Calculator, AddPositive) {
     )";
 
   const char* scriptExpected = R"(
-        using testable.movement
+        using modules.movement
 
         TestEntity {
             Position: {x: 11.0, y: 22.0}
@@ -33,10 +35,10 @@ TEST(Calculator, AddPositive) {
     )";
 
 
-  std::vector<testing::SystemInvocation> sys = {
-    { "testable::movement::move", 1 }
+  std::vector<test_runner::SystemInvocation> sys = {
+    { "modules::movement::move", 1 }
   };
-  testing::addTestEntity(
+  test_runner::addTestEntity(
     ecs, "TestEntity0",
     sys,
     scriptActual, 

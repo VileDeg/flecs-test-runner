@@ -22,6 +22,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 
 include(FetchContent)
+include(Functions.cmake)
 
 # Fetch the Flecs repository
 FetchContent_Declare(
@@ -47,12 +48,7 @@ FetchContent_MakeAvailable(flecs googletest)
 
 # --- Add Application and Tests ---
 
-# 1. Add your application's source code/library
 add_subdirectory(src) 
-
-# 2. Include the tests directory
-add_subdirectory(tests)
-
 
 
 

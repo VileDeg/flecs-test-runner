@@ -6,7 +6,7 @@
 #include <functional>
 
 
-namespace testing {
+namespace test_runner {
     /* TODO:
     * Maybe suppor system triggered by an event?
     * */
