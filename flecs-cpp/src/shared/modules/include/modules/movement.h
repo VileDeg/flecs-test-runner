@@ -10,7 +10,7 @@ namespace modules {
         float x;
         float y;
     };
-  
+    
     struct movement {
         movement(flecs::world& world);
     };

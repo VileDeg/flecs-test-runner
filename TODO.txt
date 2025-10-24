@@ -1,0 +1,12 @@
+
+1. Run each system invocation (or system?) in a separate thread to prevent blocking on flecs app and let it answer HTTP requests.
+  Need to be able to check polling tests.
+
+2. Allow testing for <, >, != in tests. 
+  Maybe specify in test config which components to compare with which equality operators.
+
+3. Provide user a way to create tests graphically.
+  Maybe query for all available components and systems and let user assemble the test by selecting components, systems etc.
+  Based on user selection generate actual and expected script and comparison operators.
+  Fill in UnitTest object and proceed as usual.
+

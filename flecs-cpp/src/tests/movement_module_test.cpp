@@ -38,6 +38,8 @@ TEST(Calculator, AddPositive) {
   std::vector<test_runner::SystemInvocation> sys = {
     { "modules::movement::move", 1 }
   };
+
+
   test_runner::addTestEntity(
     ecs, "TestEntity0",
     sys,

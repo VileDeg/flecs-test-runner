@@ -1,0 +1,11 @@
+{
+  "name" :  "testMovement",
+  "systems" : [
+    {
+      "name" : "modules::movement::move", 
+      "timesToRun" : 1
+    }
+  ],
+  "scriptActual" : "using modules.movement\n\nTestEntity {\n    Position: {x: 10.0, y: 20.0}\n    Velocity: {x: 1.0, y: 2.0}\n}",
+  "scriptExpected" : "using modules.movement\n\nTestEntity {\n    Position: {x: -42.0, y: -42.0}\n    Velocity: {x: 1.0, y: 2.0}\n}"
+}

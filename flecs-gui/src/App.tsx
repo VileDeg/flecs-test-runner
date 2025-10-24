@@ -1,26 +1,118 @@
 import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
+
+import { FlecsConnectionProvider } from "./context/flecsConnection/flecsConnectionProvider.tsx";
+
+import {LandingPage} from './components/landingPage/landingPage.tsx'
+import {ResultsPage} from './components/resultsPage/resultsPage.tsx'
+
+import { useFlecsConnection } from "./context/flecsConnection/useFlecsConnection.ts";
 
 import './App.css'  
 
-import { Container, Title, Subtitle, Button, Output } from './styles'
+import { 
+  Container, 
+  Title, 
+  Subtitle, 
+  Button, 
+  Output, 
+  TopBar, 
+  TopBarLeft, 
+  TopBarRight, 
+  AppTitle, 
+  ConnectionBadge, 
+  NavButton, 
+  CenteredContent, 
+  MainContent 
+} from './styles'
+import { Header, StatusBar } from './components/landingPage/styles.ts'
+import { FLECS_PORT, BASE_URL } from './common/constants.ts'
 
-const BASE_URL = "http://localhost:27750"; // Adjust the port if necessary
 // Default port 27750
 
-
-
-
 // Main App Component
-const App = () => {
-  const [entities, setEntities] = useState(null);
-  const [components, setComponents] = useState(null);
+export const App = () => {
+  return (
+    <FlecsConnectionProvider>
+      <AppContent />
+    </FlecsConnectionProvider>
+  );
+}
+
+// App content with connection context
+const AppContent = () => {
+  const [entities, setEntities] = useState<any>(null);
   const [responseMessage, setResponseMessage] = useState("");
+  
+  const [testMode] = useState(false);
+  const [currentPage, setCurrentPage] = useState<'landing' | 'results'>('landing');
+  
+  const { status } = useFlecsConnection();
+  
+  // Comes from LandingPage
+  const onTestsUploaded = () => {
+    setCurrentPage('results'); // Automatically switch to results page after tests are uploaded
+  };
+
+  // Navigation functions
+  const goToLandingPage = () => {
+    setCurrentPage('landing');
+  };
+
+  const goToResultsPage = () => {
+    setCurrentPage('results');
+  };
+
+  // Render the top bar when connected
+  const renderTopBar = () => (
+    <TopBar>
+      <TopBarLeft>
+        <AppTitle>Unit Test Runner</AppTitle>
+        <ConnectionBadge $status={status}>
+          {status === "Connected" && "✅ Connected"}
+          {(status === "Connecting" || status === "RetryConnecting") && "🔄 Connecting..."}
+          {status === "Disconnected" && "❌ Disconnected"}
+        </ConnectionBadge>
+      </TopBarLeft>
+      <TopBarRight>
+        <NavButton 
+          $active={currentPage === 'landing'} 
+          onClick={goToLandingPage}
+        >
+          Upload Tests
+        </NavButton>
+        <NavButton 
+          $active={currentPage === 'results'} 
+          onClick={goToResultsPage}
+        >
+          View Results
+        </NavButton>
+      </TopBarRight>
+    </TopBar>
+  );
+
+  // Render centered content when not connected
+  const renderCenteredContent = () => (
+    <CenteredContent>
+      <Header>Unit Test Runner</Header>
+      <StatusBar $status={status}>
+        {(status === "Connecting" || status === "RetryConnecting") 
+            && `Trying to connect to port ${FLECS_PORT}...`}
+        {status === "Connected" && `✅ Connected to port ${FLECS_PORT}`}
+        {status === "Disconnected" && "❌ Connection failed"}
+      </StatusBar>
+    </CenteredContent>
+  );
 
   // Fetch entities from the Flecs REST API
   const fetchEntities = async () => {
     try {
+      
+      //let conn = flecs.connect("localhost");
+      // let conn = flecs.connect({
+      //   host: "localhost"
+      // });
+      //console.log("REACEHD HERE");
+      //const response = conn.entity(`Sun`);
       const response = await fetch(`${BASE_URL}/entity/Sun`);
       if (!response.ok) {
         throw new Error(`Failed to fetch entities: ${response.statusText}`);
@@ -29,27 +121,20 @@ const App = () => {
       setEntities(data);
     } catch (error) {
       //setEntities(null);
-      //setEntities({ error: error.message });
-      console.error("Error fetch entities");
+      setEntities({ error: (error as Error).message });
+      //console.error("Error fetch entities");
     }
   };
   
   // Create an entity named UnitTestN and add a UnitTest component
   const createUnitTestEntity = async () => {
-    const entityName = `UnitTest0`; // Replace N with a unique identifier if needed
-    const systemName = "SystemToRun"; // Replace with the name of the system to run
-
-    const entityData = {
-      path: entityName,
-      components: {
-        UnitTest: {
-          system_name: systemName, // Add the system name to the UnitTest component
-        },
-      },
-    };
+    const entityName = `UnitTest0`;
 
     // Create entity
     try {
+      //let conn = flecs.connect("localhost");
+      
+      
       const response = await fetch(`${BASE_URL}/entity/${entityName}`, {
         method: "PUT",
         // headers: {
@@ -75,7 +160,12 @@ const App = () => {
     
     // Add component
     try {
-      const response = await fetch(`${BASE_URL}/entity/${entityName}`, {
+      const url = new URL(`${BASE_URL}/component/${entityName}?`);
+      url.searchParams.set("component", "test_runner..UnitTest");
+      url.searchParams.set("value", "{\"systemName\":\"testSystem\"}");
+
+      
+      const response = await fetch(url.toString(), {
         method: "PUT",
         // headers: {
         //   "Content-Type": "application/json",
@@ -84,81 +174,57 @@ const App = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to create entity: ${response.statusText}`);
+        throw new Error(`Failed to create component: ${response.statusText}`);
       }
 
       const data = await response.json();
-      console.log("Entity created:", data);
+      console.log("Test component added:", data);
       
       
-      setResponseMessage(`Entity ${entityName} created successfully!`);
+      setResponseMessage(`Component for ${entityName} created successfully!`);
       
     } catch (error) {
-      setResponseMessage(`Error creating entity: ${error instanceof Error ? error.message : "Unknown error"}`);
-      console.error("Error creating entity:", error);
+      setResponseMessage(`Error creating component: ${error instanceof Error ? error.message : "Unknown error"}`);
+      console.error("Error creating component:", error);
     }
   };
 
-  // Fetch components from the Flecs REST API
-  // const fetchComponents = async () => {
-  //   try {
-  //     const response = await fetch(`${BASE_URL}/components`);
-  //     if (!response.ok) {
-  //       throw new Error(`Failed to fetch components: ${response.statusText}`);
-  //     }
-  //     const data = await response.json();
-  //     setComponents(data);
-  //   } catch (error) {
-  //     setComponents(null);
-  //     //setComponents({ error: error.message });
-  //     console.error("Error fetch components");
-  //   }
-  // };
-
   return (
-   <Container>
-      <Title>Flecs REST API GUI</Title>
-      <Button onClick={fetchEntities}>Fetch Entities</Button>
-      <Button onClick={createUnitTestEntity}>Create Unit Test Entity</Button>
+    <div style={{ display: "block" }}>
+      {testMode ? (
+        <Container>
+          <Title>Flecs REST API GUI</Title>
+          <Button onClick={fetchEntities}>Fetch Entities</Button>
+          <Button onClick={createUnitTestEntity}>Create Unit Test Entity</Button>
 
-      <Subtitle>Entities</Subtitle>
-      <Output>{entities ? JSON.stringify(entities, null, 2) : "Click 'Fetch Entities' to load data..."}</Output>
+          <Subtitle>Entities</Subtitle>
+          <Output>{entities ? JSON.stringify(entities, null, 2) : "Click 'Fetch Entities' to load data..."}</Output>
 
-      <Subtitle>Response</Subtitle>
-      <Output>{responseMessage || "Click 'Create Unit Test Entity' to create an entity..."}</Output>
-    </Container>
+          <Subtitle>Response</Subtitle>
+          <Output>{responseMessage || "Click 'Create Unit Test Entity' to create an entity..."}</Output>
+        </Container>
+      ): (
+        <div>
+          {status === "Connected" ? (
+            <>
+              {renderTopBar()}
+              <MainContent>
+                {currentPage === 'landing' ? (
+                  <LandingPage onTestsUploaded={onTestsUploaded} />
+                ) : (
+                  <ResultsPage />
+                )}
+              </MainContent>
+            </>
+          ) : (
+            renderCenteredContent()
+          )}
+        </div>
+        )    
+      }
+    </div>
   );
 }
 
-export default App;
 
-// function App() {
-//   const [count, setCount] = useState(0)
 
-//   return (
-//     <>
-//       <div>
-//         <a href="https://vite.dev" target="_blank">
-//           <img src={viteLogo} className="logo" alt="Vite logo" />
-//         </a>
-//         <a href="https://react.dev" target="_blank">
-//           <img src={reactLogo} className="logo react" alt="React logo" />
-//         </a>
-//       </div>
-//       <h1>Vite + React</h1>
-//       <div className="card">
-//         <button onClick={() => setCount((count) => count + 1)}>
-//           count is {count}
-//         </button>
-//         <p>
-//           Edit <code>src/App.tsx</code> and save to test HMR
-//         </p>
-//       </div>
-//       <p className="read-the-docs">
-//         Click on the Vite and React logos to learn more
-//       </p>
-//     </>
-//   )
-// }
-
-// export default App
