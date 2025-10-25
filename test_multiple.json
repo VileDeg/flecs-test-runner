@@ -1,0 +1,26 @@
+{
+  "tests": [
+    {
+      "name" :  "testMovement",
+      "systems" : [
+        {
+          "name" : "move", 
+          "timesToRun" : 1
+        }
+      ],
+      "scriptActual" : "using modules.movement\n\nTestEntity {\n    Position: {x: 10.0, y: 20.0}\n    Velocity: {x: 1.0, y: 2.0}\n}",
+      "scriptExpected" : "using modules.movement\n\nTestEntity {\n    Position: {x: 11.0, y: 22.0}\n    Velocity: {x: 1.0, y: 2.0}\n}"
+    },
+    {
+      "name" :  "testMovement1",
+      "systems" : [
+        {
+          "name" : "move", 
+          "timesToRun" : 1
+        }
+      ],
+      "scriptActual" : "using modules.movement\n\nTestEntity {\n    Position: {x: 10.0, y: 20.0}\n    Velocity: {x: 1.0, y: 2.0}\n}",
+      "scriptExpected" : "using modules.movement\n\nTestEntity {\n    Position: {x: 11.0, y: 22.0}\n    Velocity: {x: 1.0, y: 2.0}\n}"
+    }
+  ]
+}

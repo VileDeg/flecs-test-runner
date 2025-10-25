@@ -11,34 +11,60 @@ namespace test_runner {
 
 namespace {
 
+    class NullBuffer : public std::streambuf {
+    protected:
+        int overflow(int c) override { return c; }
+    };
+
+    class NullStream : public std::ostream {
+    public:
+        NullStream() : std::ostream(&m_sb) {}
+    private:
+        NullBuffer m_sb;
+    };
+
+    
+
+    //static bool verboseLog = false;
+    static LogLevel logLevel = LogLevel::WARN;
+    static NullStream nullStream;
+
+
+#define pfatal (logLevel >= LogLevel::FATAL ? std::cerr : nullStream)
+#define perror (logLevel >= LogLevel::ERROR ? std::cerr : nullStream)
+#define pwarn  (logLevel >= LogLevel::WARN  ? std::cout : nullStream)
+#define pinfo  (logLevel >= LogLevel::INFO  ? std::cout : nullStream)
+#define ptrace (logLevel >= LogLevel::TRACE ? std::cout : nullStream)
+
+
     // ============================================================================================
     bool compareWorlds(flecs::world& world1, flecs::world& world2) {
-        std::cout << "\nWorld Comparison (using serialization):\n";
-        std::cout << "========================================\n";
+        pinfo << "\nWorld Comparison (using serialization):\n";
+        pinfo << "========================================\n";
 
         // Serialize both worlds to JSON
         flecs::string json1 = world1.to_json();
         flecs::string json2 = world2.to_json();
 
-        std::cout << "\nWorld 1 JSON:\n";
-        std::cout << json1 << "\n";
+        pinfo << "\nWorld 1 JSON:\n";
+        pinfo << json1 << "\n";
 
-        std::cout << "\nWorld 2 JSON:\n";
-        std::cout << json2 << "\n";
+        pinfo << "\nWorld 2 JSON:\n";
+        pinfo << json2 << "\n";
 
         // Compare the serialized representations
         bool matches = (json1 == json2);
 
-        std::cout << "\n";
+        pinfo << "\n";
         if(matches) {
-            std::cout << "WORLDS MATCH!\n";
-            std::cout << "The serialized JSON representations are identical.\n";
+            pinfo << "WORLDS MATCH!\n";
+            pinfo << "The serialized JSON representations are identical.\n";
         } else {
-            std::cout << "WORLDS DO NOT MATCH!\n";
-            std::cout << "The serialized JSON representations differ.\n";
+            pinfo << "WORLDS DO NOT MATCH!\n";
+            pinfo << "The serialized JSON representations differ.\n";
 
             // Show size difference as a hint
-            std::cout << "\nJSON sizes: World1=" << json1.size()
+            pinfo << "\nJSON sizes: World1=" << json1.size()
                 << " bytes, World2=" << json2.size() << " bytes\n";
         }
 
@@ -57,6 +83,11 @@ namespace {
             *data = value; // Assign new value to std::string
         });
 
+        world.component<UnitTest::Passed>();
+        
+        world.component<UnitTest::Executed>()
+            .member<std::string>("statusMessage");
+
         world.component<SystemInvocation>()
             .member<std::string>("name")
             .member<int>("timesToRun");
@@ -72,8 +103,6 @@ namespace {
             .member<std::vector<SystemInvocation>>("systems")
             .member<std::string>("scriptActual")
             .member<std::string>("scriptExpected");
-            //.member<bool>("passed");
-
     }
 
     // ============================================================================================
@@ -82,13 +111,13 @@ namespace {
         flecs::entity systemEntity = world.lookup(sys.name.c_str());
 
         if(!systemEntity) {
-            std::cerr << "ERROR: System '" << sys.name << "' not found!\n";
+            perror << "ERROR: System '" << sys.name << "' not found!\n";
             return;
         }
 
         // Check if it's a system
         if(!systemEntity.has(flecs::System) || !world.system(systemEntity)) {
-            std::cerr << "ERROR: Entity '" << sys.name << "' is not a system!\n";
+            perror << "ERROR: Entity '" << sys.name << "' is not a system!\n";
             return;
         }
 
@@ -97,30 +126,40 @@ namespace {
         // Run system
         for(int i = 0; i < sys.timesToRun; ++i) {
             system.run();
-            std::cout << "[" << i << "] Running system '" << sys.name << "'\n";
+            pinfo << "[" << i << "] Running system '" << sys.name << "'\n";
         }
     }
-}
+} // ns
 
 // ================================================================================================
-struct moduleImpl {
-    moduleImpl(flecs::world& world);
+struct impl {
+    impl(flecs::world& world);
 
     static std::function<void(flecs::world&)> modulesProvider;
 };
 
-std::function<void(flecs::world&)> moduleImpl::modulesProvider;
+std::function<void(flecs::world&)> impl::modulesProvider;
 
+void test_runner::setLogLevel(LogLevel ll) {
+    logLevel = ll;
+}
 
 // ================================================================================================
-moduleImpl::moduleImpl(flecs::world& world) {
+impl::impl(flecs::world& world) {
     registerReflection(world);
 
     world.system<UnitTest>("TestRunner")
         .kind(flecs::OnUpdate)
         .without<UnitTest::Executed>()
         .each([this](flecs::entity e, UnitTest& test) {
-            std::cout << "Running test: " << test.name << "\n";
+            pinfo << "Running test: " << test.name << "\n";
+
+            auto status = test.validate();
+            if(status.has_value()) {
+                perror << "Failed to run test " << test.name << ": " << *status << "\n";
+                e.set<UnitTest::Executed>({ *status });
+                return;
+            }
 
             // Create ACTUAL world
             flecs::world worldActual;
@@ -137,26 +176,26 @@ moduleImpl::moduleImpl(flecs::world& world) {
             modulesProvider(worldExpected);
             worldExpected.script_run("Script (Expected)", test.scriptExpected.c_str());
 
+            std::string statusMessage;
             if(compareWorlds(worldActual, worldExpected)) {
                 e.add<UnitTest::Passed>();
+                statusMessage = "OK";
+            } else {
+                statusMessage = "Worlds do not match. Actual vs. expected";
             }
-            e.add<UnitTest::Executed>();
+            e.set<UnitTest::Executed>({ statusMessage });
         });
 }
-
-// ================================================================================================
-//std::vector<UnitTest::Result> test_runner::getAllTestResults()
-//{
-//    return std::vector<UnitTest::Result>();
-//}
 
 // ================================================================================================
 void test_runner::initializeTests(
     flecs::world& world, 
     std::function<void(flecs::world&)> modulesProvider
 ) {
-    moduleImpl::modulesProvider = modulesProvider;
-    world.import<moduleImpl>();
+    impl::modulesProvider = modulesProvider;
+    world.import<impl>();
+
+   
 
     /* TODO:
     * Maybe automatically assign kind 0 to all systems here? 

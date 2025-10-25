@@ -1,6 +1,12 @@
 import { useState } from 'react'
+
 import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
+
+import { FlecsConnectionProvider } from "./context/flecsConnection/flecsConnectionProvider.tsx";
+
+import {LandingPage} from './components/landingPage/landingPage.tsx'
+import {ResultsPage} from './components/resultsPage/resultsPage.tsx'
 
 //import flecs from '../flecs.js'
 
@@ -8,17 +14,28 @@ import './App.css'
 
 import { Container, Title, Subtitle, Button, Output } from './styles'
 
-const BASE_URL = "http://localhost:27750"; // Adjust the port if necessary
+
 // Default port 27750
-
-
-
 
 // Main App Component
 const App = () => {
   const [entities, setEntities] = useState(null);
   const [components, setComponents] = useState(null);
   const [responseMessage, setResponseMessage] = useState("");
+
+  const [testFile, setTestFile] = useState<File | null>(null);
+  
+  const [testMode, setTestMode] = useState(false);
+  const [testsUploaded, setTestsUploaded] = useState(false);
+  
+  const onUpload = (file: File) => {
+    setTestFile(file);
+  };
+  
+  // Comes from LandingPage
+  const onTestsUploaded = () => {
+    setTestsUploaded(true);
+  };
 
   // Fetch entities from the Flecs REST API
   const fetchEntities = async () => {
@@ -88,7 +105,7 @@ const App = () => {
     // Add component
     try {
       const url = new URL(`${BASE_URL}/component/${entityName}?`);
-      url.searchParams.set("component", "test_runner.UnitTest");
+      url.searchParams.set("component", "test_runner..UnitTest");
       url.searchParams.set("value", "{\"systemName\":\"testSystem\"}");
 
       
@@ -116,34 +133,35 @@ const App = () => {
     }
   };
 
-  // Fetch components from the Flecs REST API
-  // const fetchComponents = async () => {
-  //   try {
-  //     const response = await fetch(`${BASE_URL}/components`);
-  //     if (!response.ok) {
-  //       throw new Error(`Failed to fetch components: ${response.statusText}`);
-  //     }
-  //     const data = await response.json();
-  //     setComponents(data);
-  //   } catch (error) {
-  //     setComponents(null);
-  //     //setComponents({ error: error.message });
-  //     console.error("Error fetch components");
-  //   }
-  // };
-
   return (
-   <Container>
-      <Title>Flecs REST API GUI</Title>
-      <Button onClick={fetchEntities}>Fetch Entities</Button>
-      <Button onClick={createUnitTestEntity}>Create Unit Test Entity</Button>
+    <FlecsConnectionProvider>
+      <div style={{ display: "block" }}>
+      {testMode ? (
+        <Container>
+          <Title>Flecs REST API GUI</Title>
+          <Button onClick={fetchEntities}>Fetch Entities</Button>
+          <Button onClick={createUnitTestEntity}>Create Unit Test Entity</Button>
 
-      <Subtitle>Entities</Subtitle>
-      <Output>{entities ? JSON.stringify(entities, null, 2) : "Click 'Fetch Entities' to load data..."}</Output>
+          <Subtitle>Entities</Subtitle>
+          <Output>{entities ? JSON.stringify(entities, null, 2) : "Click 'Fetch Entities' to load data..."}</Output>
 
-      <Subtitle>Response</Subtitle>
-      <Output>{responseMessage || "Click 'Create Unit Test Entity' to create an entity..."}</Output>
-    </Container>
+          <Subtitle>Response</Subtitle>
+          <Output>{responseMessage || "Click 'Create Unit Test Entity' to create an entity..."}</Output>
+        </Container>
+      ): (
+        
+        <div style={{ marginTop: "60px" }}>
+          
+          {testsUploaded == false ? (
+            <LandingPage onTestsUploaded={onTestsUploaded} />
+          ) : (
+            <ResultsPage />
+          )}
+        </div>
+        )    
+      }
+      </div>
+    </FlecsConnectionProvider>
   );
 }
 

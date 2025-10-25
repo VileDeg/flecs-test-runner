@@ -22,9 +22,11 @@ int remote(int argc, char* argv[]) {
     // the application name.
     flecs::world ecs(argc, argv);
 
+    test_runner::setLogLevel(test_runner::LogLevel::INFO);
     test_runner::initializeTests(ecs, [](flecs::world& world) {
         world.import<modules::movement>();
     });
+
 
     ecs.import<flecs::units>();
     ecs.import<flecs::stats>(); // Collect statistics periodically

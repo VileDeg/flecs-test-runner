@@ -7,11 +7,11 @@
 //
 
 // If the environment is Node.js import XMLHttpRequest
-if (typeof process === "object" && typeof require === "function") {
-  var XMLHttpRequest = require("xhr2");
-}
+// if (typeof process === "object" && typeof require === "function") {
+//   var XMLHttpRequest = require("xhr2");
+// }
 
-const flecs = {
+export const flecs = {
   // State of connection
   ConnectionStatus: {
     Connecting:       Symbol('Connecting'),       // Attempting to connect
@@ -844,3 +844,5 @@ const flecs = {
     }
   },
 };
+
+export default flecs;
