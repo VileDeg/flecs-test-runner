@@ -22,40 +22,62 @@ export const ErrorBox = styled.div`
   text-align: left;
   white-space: pre-line;
 `;
-
 export const Table = styled.table`
   width: 100%;
   border-collapse: collapse;
-  margin-top: 20px;
+  background: #1e1e1e;
+  border-radius: 8px;
+  overflow: hidden;
+`;
 
-  th, td {
-    border: 1px solid #ccc;
-    padding: 8px 10px;
-    text-align: left;
+export const TableHead = styled.thead`
+  background: #2d2d2d;
+`;
+
+export const TableBody = styled.tbody``;
+
+export const TableRow = styled.tr`
+  border-bottom: 1px solid #2d2d2d;
+
+  &:hover {
+    background: #252525;
   }
 
-  th {
-    background-color: #f3f3f3;
+  &:last-child {
+    border-bottom: none;
   }
 `;
 
-export const StatusBadge = styled.span<{ status: "passed" | "failed" | "pending" }>`
+export const TableHeader = styled.th`
+  padding: 12px;
+  text-align: left;
+  font-weight: 600;
+  color: #e0e0e0;
+  border-bottom: 2px solid #3d3d3d;
+`;
+
+export const TableCell = styled.td`
+  padding: 12px;
+  color: #e0e0e0;
+`;
+
+export const StatusBadge = styled.span<{ $status: "passed" | "failed" | "pending" }>`
   padding: 4px 10px;
   border-radius: 6px;
   font-weight: 600;
   color: white;
-  ${({ status }) =>
-    status === "passed" &&
+  ${({ $status }) =>
+    $status === "passed" &&
     css`
       background-color: #28a745;
     `}
-  ${({ status }) =>
-    status === "failed" &&
+  ${({ $status }) =>
+    $status === "failed" &&
     css`
       background-color: #dc3545;
     `}
-  ${({ status }) =>
-    status === "pending" &&
+  ${({ $status }) =>
+    $status === "pending" &&
     css`
       background-color: #ffc107;
       color: #212529;

@@ -1,21 +1,32 @@
 import { useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 
+
+
+export namespace UnitTest {
+  export interface Executed {
+    statusMessage: string;
+  }
+  export interface Passed {
+  }
+}
+
 // Define test types for clarity
-export interface TestSystem {
+export interface SystemInvocation {
   name: string;
   timesToRun: number;
 }
 
-export interface TestCase {
+export interface UnitTest {
+ 
   name: string;
-  systems: TestSystem[];
+  systems: SystemInvocation[];
   scriptActual: string;
   scriptExpected: string;
 }
 
 interface UploaderProps {
-  onTestsParsed : (tests: TestCase[]) => void;
+  onTestsParsed : (tests: UnitTest[]) => void;
 }
 
 // TODO: allow supplying multiple files, merge all files to get a list of the tests
@@ -28,7 +39,7 @@ JSON may start with `tests` array or may only contain one test element
 export const Uploader: React.FC<UploaderProps> = ({ onTestsParsed  }) => {
   const onDrop = useCallback(
     async (acceptedFiles: File[]) => {
-      const allTests: TestCase[] = [];
+      const allTests: UnitTest[] = [];
 
       for (const file of acceptedFiles) {
         try {
@@ -43,7 +54,7 @@ export const Uploader: React.FC<UploaderProps> = ({ onTestsParsed  }) => {
           } else if (json.name && json.systems) {
             allTests.push(json);
           } else {
-            console.warn(`File ${file.name} has unknown structure`);
+            console.warn(`File ${file.name} has invalid structure`);
           }
         } catch (e) {
           console.error(`Error parsing ${file.name}:`, e);
@@ -57,7 +68,7 @@ export const Uploader: React.FC<UploaderProps> = ({ onTestsParsed  }) => {
   );
 
 
-   const { getRootProps, getInputProps, isDragActive, fileRejections } =
+  const { getRootProps, getInputProps, isDragActive, fileRejections } =
     useDropzone({
       onDrop,
       accept: {

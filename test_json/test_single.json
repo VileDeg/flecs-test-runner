@@ -2,7 +2,7 @@
   "name" :  "testMovement",
   "systems" : [
     {
-      "name" : "move", 
+      "name" : "modules::movement::move", 
       "timesToRun" : 1
     }
   ],

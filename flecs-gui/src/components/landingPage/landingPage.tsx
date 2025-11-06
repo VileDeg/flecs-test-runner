@@ -1,4 +1,4 @@
-import { Uploader, type TestCase, type TestSystem } from "../uploader/uploader.tsx";
+import { Uploader, type UnitTest, type SystemInvocation } from "../uploader/uploader.tsx";
 
 import { useState, useEffect } from 'react'
 
@@ -32,7 +32,7 @@ JSON may start with `tests` array or may only contain one test element
 */
 
 export const LandingPage: React.FC<LandingPageProps> = ({ onTestsUploaded }) => {
-  const [tests, setTests] = useState<TestCase[]>([]);
+  const [tests, setTests] = useState<UnitTest[]>([]);
   // const [connectionStatus, setConnectionStatus] = useState<
   //   "checking" | "connected" | "failed"
   // >("checking");
@@ -46,11 +46,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onTestsUploaded }) => 
     setConnectionStatus(status);
   }, [status]);
 
-  useEffect(() => {
+  /*useEffect(() => {
     if (heartbeat) {
       console.log("Heartbeat:", heartbeat);
     }
-  }, [heartbeat]);
+  }, [heartbeat]);*/
   
     // 🔍 Check backend connection after mount
   // useEffect(() => {
@@ -77,14 +77,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onTestsUploaded }) => 
   //   checkConnection();
   // }, []);
   
-  const onTestsParsed = (tests: TestCase[]) => {
+  const onTestsParsed = (tests: UnitTest[]) => {
     setTests(tests);
     runUnitTests(tests);
     onTestsUploaded();
   };
   
-  const runTest = async (test: TestCase) => {
+  const runTest = async (test: UnitTest) => {
     
+    console.log("Running test: ", test);
     /*
     if (this.request.status < 200 || this.request.status >= 300) {
       // Error status
@@ -109,17 +110,22 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onTestsUploaded }) => 
       };
       
       const err = (responseText : string) => {
-        console.log("err: " + responseText);
+        
         throw new Error(`Failed to create entity or component: ${responseText}`);
       };
       
+      // TODO: need to wait till request is received? Is it async?
       connection.create(entityName, recv, err);
       console.log("CREATED entity");
+      // TODO: what if test with such name already exists?
       connection.add(entityName, UNIT_TEST_COMPONENT_NAME, recv, err);
       console.log("CREATED compoennt");
       connection.set(entityName, UNIT_TEST_COMPONENT_NAME, test);
       console.log("SET compoennt");
-      
+
+      console.log(`✅ Test "${test.name}" created successfully.`);
+
+     
       // // 🧱 Create entity
       // const entityRes = await fetch(`${BASE_URL}/entity/${entityName}`, {
       //   method: "PUT",
@@ -144,7 +150,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onTestsUploaded }) => 
       //   throw new Error(`Failed to create component: ${compRes.statusText}`);
       // }
 
-      console.log(`✅ Test "${test.name}" created successfully.`);
     } catch (error: any) {
       console.error("Error running test:", error);
       setErrorMessage(`Error running test "${test.name}": ${error.message}`);
@@ -152,7 +157,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onTestsUploaded }) => 
   }
   
 
-  const runUnitTests = async (testsToRun: TestCase[]) => {
+  const runUnitTests = async (testsToRun: UnitTest[]) => {
     setErrorMessage("");
     for (const test of testsToRun) {
       // TODO: timeout between running tests?
@@ -176,10 +181,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onTestsUploaded }) => 
 
       {errorMessage && <ErrorBox>{errorMessage}</ErrorBox>}
 
-      {connectionStatus === "Connected" && (
+      {connectionStatus === "Connected" && 
         <>
           <Uploader onTestsParsed={onTestsParsed} />
-
+        
           {tests.length > 0 && (
             <>
               <TestsList>
@@ -194,7 +199,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onTestsUploaded }) => 
             </>
           )}
         </>
-      )}
+      }
     </Container>
   );
 };
