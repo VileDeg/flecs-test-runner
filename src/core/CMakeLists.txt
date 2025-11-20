@@ -1,0 +1,30 @@
+set(LIB_NAME ${TEST_RUNNER_LIB_NAME})
+set(SRC_DIR "./")
+
+# Explicit source file list (no GLOB_RECURSE)
+set(SRC_FILES
+    test_runner.cpp
+    reflection.h
+    include/test_runner/test_runner.h
+)
+
+# Create a static library
+add_library(
+  ${LIB_NAME} STATIC 
+  ${SRC_FILES}
+)
+
+# Add src directory to include path so headers can be found
+target_include_directories(
+  ${LIB_NAME} 
+  PRIVATE 
+    ${SRC_DIR}
+  PUBLIC
+    ${SRC_DIR}/include
+)
+
+target_link_libraries(
+  ${LIB_NAME}
+  PRIVATE
+    flecs::flecs_static
+)
