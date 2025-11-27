@@ -10,16 +10,13 @@
 
 using LogLevel = TestRunner::LogLevel;
 
-std::function<void(flecs::world&)> TestRunner::_modulesProvider;
-std::map<std::string, void(*)(flecs::world&)> TestRunner::_moduleRegistry;
+static LogLevel s_LogLevel = LogLevel::WARN;
 
-LogLevel TestRunner::_logLevel = LogLevel::WARN;
-
-#define pfatal (TestRunner::_logLevel >= LogLevel::FATAL ? std::cerr : nullStream)
-#define perror (TestRunner::_logLevel >= LogLevel::ERROR ? std::cerr : nullStream)
-#define pwarn  (TestRunner::_logLevel >= LogLevel::WARN  ? std::cout : nullStream)
-#define pinfo  (TestRunner::_logLevel >= LogLevel::INFO  ? std::cout : nullStream)
-#define ptrace (TestRunner::_logLevel >= LogLevel::TRACE ? std::cout : nullStream)
+#define pfatal (s_LogLevel >= LogLevel::FATAL ? std::cerr : nullStream)
+#define perror (s_LogLevel >= LogLevel::ERROR ? std::cerr : nullStream)
+#define pwarn  (s_LogLevel >= LogLevel::WARN  ? std::cout : nullStream)
+#define pinfo  (s_LogLevel >= LogLevel::INFO  ? std::cout : nullStream)
+#define ptrace (s_LogLevel >= LogLevel::TRACE ? std::cout : nullStream)
 
 class NullBuffer : public std::streambuf {
 protected:
@@ -35,6 +32,9 @@ private:
     
 static NullStream nullStream;
 
+void TestRunner::setLogLevel(LogLevel logLevel) {
+  s_LogLevel = logLevel;
+}
 
 // ================================================================================================
 bool TestRunner::compareWorlds(flecs::world& world1, flecs::world& world2) {
@@ -70,6 +70,26 @@ bool TestRunner::compareWorlds(flecs::world& world1, flecs::world& world2) {
     return matches;
 }
 
+static std::optional<flecs::system> getSystemByName(
+  const flecs::world& world, const std::string& systemName
+) {
+  // Lookup the system by name
+  flecs::entity systemEntity = world.lookup(systemName.c_str());
+
+  if(!systemEntity) {
+    perror << "ERROR: System '" << systemName << "' not found!\n";
+    return std::nullopt;
+  }
+
+  // Check if it's a system
+  if(!systemEntity.has(flecs::System) || !world.system(systemEntity)) {
+    perror << "ERROR: Entity '" << systemName << "' is not a system!\n";
+    return std::nullopt;
+  }
+
+  return world.system(systemEntity);
+}
+
 void TestRunner::runUnitTest(flecs::entity e, UnitTest& test)
 {
   pinfo << "Running test: " << test.name << "\n";
@@ -83,37 +103,35 @@ void TestRunner::runUnitTest(flecs::entity e, UnitTest& test)
 
   // Create ACTUAL world
   flecs::world worldActual;
+  // Create EXPECTED world
+  flecs::world worldExpected;
   // Import testable systems & components
-  //_modulesProvider(worldActual);
-
-  worldActual.script_run("ScriptActual", test.scriptActual.c_str());
-
-  // TODO: run each system invocation in separate thread?
-  // Otherwise system blocks the whole flecs application
-
-  // Run each system invocation in a separate thread and wait for them to finish.
-  // NOTE: copying 'sys' into the lambda to avoid lifetime issues.
-
-  std::vector<std::string> usedModules;
+ 
 
   for(auto& sys : test.systems) {
-    auto maybeModule = importBySystemName(worldActual, sys.name);
-    if(maybeModule.has_value()) {
-      usedModules.push_back(*maybeModule);
+    auto m = matchModuleFromSystemPath(sys.name);
+    if(m.has_value()) {
+      _moduleRegistry[*m](worldActual);
+      _moduleRegistry[*m](worldExpected);
     }
   }
 
+  // Set up world
+  worldActual.script_run("ScriptActual", test.scriptActual.c_str());
+
   for(auto& sys : test.systems) {
-      runSystem(worldActual, sys);
+    // Run system
+    for(int i = 0; i < sys.timesToRun; ++i) {
+      auto system = getSystemByName(worldActual, sys.name);
+      if(!system.has_value()) {
+        continue;
+      }
+
+      pinfo << "[" << i << "] Running system '" << sys.name << "'\n";
+      system->run();
+    }
   }
 
-  // Create EXPECTED world
-  flecs::world worldExpected;
-  // Import same modules
-  for(auto& m : usedModules) {
-    _moduleRegistry[m](worldExpected);
-  }
-  //_modulesProvider(worldExpected);
   worldExpected.script_run("ScriptExpected", test.scriptExpected.c_str());
 
   std::string statusMessage;
@@ -126,44 +144,51 @@ void TestRunner::runUnitTest(flecs::entity e, UnitTest& test)
   e.set<UnitTest::Executed>({ statusMessage });
 }
 
-// ================================================================================================
-void TestRunner::registerReflection(flecs::world& world) {
-  // TODO: reflection for string and vector built-in by flecs?
-  world.component<std::string>()
-      .opaque(flecs::String) // Opaque type that maps to string
-      .serialize([](const flecs::serializer* s, const std::string* data) {
-      const char* str = data->c_str();
-      return s->value(flecs::String, &str); // Forward to serializer
-  })
-      .assign_string([](std::string* data, const char* value) {
-      *data = value; // Assign new value to std::string
-  });
 
-  world.component<UnitTest::Passed>();
-        
-  world.component<UnitTest::Executed>()
-      .member<std::string>("statusMessage");
+void TestRunner::runUnitTestIncomplete(flecs::entity e, UnitTest& test)
+{
+  pinfo << "Running test (Incomplete): " << test.name << "\n";
 
-  world.component<SystemInvocation>()
-      .member<std::string>("name")
-      .member<int>("timesToRun");
+  auto status = test.validate();
+  if(status.has_value()) {
+    perror << "Failed to run test " << test.name << ": " << *status << "\n";
+    e.set<UnitTest::Executed>({ *status });
+    return;
+  }
 
-  // Register reflection for std::vector<int>
-  world.component<std::vector<SystemInvocation>>()
-      .opaque(reflection::std_vector_support<SystemInvocation>);
+  // Create ACTUAL world
+  flecs::world worldActual;
+ 
+  for(auto& sys : test.systems) {
+    auto m = matchModuleFromSystemPath(sys.name);
+    if(m.has_value()) {
+      _moduleRegistry[*m](worldActual);
+    }
+  }
 
+  // Set up world
+  worldActual.script_run("ScriptActual", test.scriptActual.c_str());
 
-  // TODO: maybe use some template magic to add reflection?
-  world.component<UnitTest>()
-      .member<std::string>("name")
-      .member<std::vector<SystemInvocation>>("systems")
-      .member<std::string>("scriptActual")
-      .member<std::string>("scriptExpected");
+  for(auto& sys : test.systems) {
+    // Run system
+    for(int i = 0; i < sys.timesToRun; ++i) {
+      auto system = getSystemByName(worldActual, sys.name);
+      if(!system.has_value()) {
+        continue;
+      }
 
-  world.component<TestableModule>();
+      pinfo << "[" << i << "] Running system '" << sys.name << "'\n";
+      system->run();
+    }
+  }
+
+  std::string worldExpectedSerialized = worldActual.to_json();
+  e.set<UnitTest::Executed>({ "OK", worldExpectedSerialized });
 }
 
-std::optional<std::string> TestRunner::importBySystemName(flecs::world& world, std::string systemFullPath) {
+// ================================================================================================
+
+std::optional<std::string> TestRunner::matchModuleFromSystemPath(std::string systemFullPath) {
   std::string current_path = systemFullPath;
 
   // Iteratively strip the last "::Section" until we find a match
@@ -178,77 +203,91 @@ std::optional<std::string> TestRunner::importBySystemName(flecs::world& world, s
 
     // Check if this substring matches a registered module
     if (_moduleRegistry.count(current_path)) {
-      std::cout << "[Info] System '" << systemFullPath 
-        << "' belongs to module '" << current_path << "'. Importing...\n";
-      _moduleRegistry[current_path](world);
+      pinfo << "[Info] System '" << systemFullPath 
+        << "' belongs to module '" << current_path << "\n";
+      //_moduleRegistry[current_path](world);
       return current_path;
     }
   }
 
-  std::cerr << "[Error] Could not find a registered module for system path: '" 
+  pwarn << "[Error] Could not find a registered module for system path: '" 
     << systemFullPath << "'\n";
   return std::nullopt;
 }
 
-// ================================================================================================
-void TestRunner::runSystem(flecs::world& world, const SystemInvocation& sys) {
-  //importBySystemName(world, sys.name);
-
-  // Lookup the system by name
-  flecs::entity systemEntity = world.lookup(sys.name.c_str());
-
-  if(!systemEntity) {
-      perror << "ERROR: System '" << sys.name << "' not found!\n";
-      return;
-  }
-
-  // Check if it's a system
-  if(!systemEntity.has(flecs::System) || !world.system(systemEntity)) {
-      perror << "ERROR: Entity '" << sys.name << "' is not a system!\n";
-      return;
-  }
-
-  flecs::system system = world.system(systemEntity);
-
-  // Run system
-  for(int i = 0; i < sys.timesToRun; ++i) {
-      system.run();
-      pinfo << "[" << i << "] Running system '" << sys.name << "'\n";
-  }
-}
-
-
-
-// ================================================================================================
-void TestRunner:: initialize(
-  flecs::world& world, 
-  std::function<void(flecs::world&)> modulesProvider
-) {
-  _modulesProvider = modulesProvider;
-  world.import<TestRunner>();
-  modulesProvider(world);
-
-  /* TODO:
-  * Maybe automatically assign kind 0 to all systems here? 
-  */
-}
 
 
 // ================================================================================================
 TestRunner::TestRunner(flecs::world& world) {
-    registerReflection(world);
+  // TODO: reflection for string and vector built-in by flecs?
+  world.component<std::string>()
+    .opaque(flecs::String) // Opaque type that maps to string
+    .serialize([](const flecs::serializer* s, const std::string* data) {
+    const char* str = data->c_str();
+    return s->value(flecs::String, &str); // Forward to serializer
+  })
+    .assign_string([](std::string* data, const char* value) {
+    *data = value; // Assign new value to std::string
+  });
 
-    world.system<UnitTest>("TestRunner")
-        .kind(flecs::OnUpdate)
-        .multi_threaded()
-        .without<UnitTest::Executed>()
-        .each([this](flecs::entity e, UnitTest& test) {
-            std::thread t([this, e, &test]() {
-                runUnitTest(e, test);
-            });
+  world.component<UnitTest::Ready>();
+  world.component<UnitTest::Incomplete>();
+
+  world.component<UnitTest::Passed>();
+
+  world.component<UnitTest::Executed>()
+    .member<std::string>("statusMessage")
+    .member<std::string>("worldExpectedSerialized");
+
+  world.component<SystemInvocation>()
+    .member<std::string>("name")
+    .member<int>("timesToRun");
+
+  // Register reflection for std::vector<int>
+  world.component<std::vector<SystemInvocation>>()
+    .opaque(reflection::std_vector_support<SystemInvocation>);
+
+
+  // TODO: maybe use some template magic to add reflection?
+  world.component<UnitTest>()
+    .member<std::string>("name")
+    .member<std::vector<SystemInvocation>>("systems")
+    .member<std::string>("scriptActual")
+    .member<std::string>("scriptExpected");
+
+  world.component<TestableModule>();
+
+  world.system<UnitTest>("TestRunner")
+    .kind(flecs::OnUpdate)
+    .multi_threaded()
+    .with<UnitTest::Ready>()
+    .without<UnitTest::Executed>()
+    .without<UnitTest::Incomplete>()
+    .each([this](flecs::entity e, UnitTest& test) {
+      //std::thread t([this, e, &test]() {
+      runUnitTest(e, test);
+      //});
             
-            if(t.joinable()) t.join();
-        });
+      //if(t.joinable()) {
+      //t.join();
+      //}
+    });
+
+  world.system<UnitTest>("TestRunnerIncomplete")
+    .kind(flecs::OnUpdate)
+    .multi_threaded()
+    .with<UnitTest::Ready>()
+    .without<UnitTest::Executed>()
+    .with<UnitTest::Incomplete>()
+    .each([this](flecs::entity e, UnitTest& test) {
+      //std::thread t([this, e, &test]() {
+      runUnitTestIncomplete(e, test);
+      //});
+
+      //if(t.joinable()) {
+      //t.join();
+      //}
+  });
 }
 
 

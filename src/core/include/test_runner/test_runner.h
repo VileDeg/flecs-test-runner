@@ -9,7 +9,7 @@
 
 struct TestRunner {
   /* TODO:
-  * Maybe suppor system triggered by an event?
+  * Maybe support system triggered by an event?
   * */
   enum class LogLevel {
     FATAL = 0,
@@ -26,12 +26,18 @@ struct TestRunner {
 
   struct UnitTest {
     // Tags
+    struct Ready {};
+
     struct Executed {
       std::string statusMessage;
+      std::string worldExpectedSerialized;
     };
     struct Passed {};
 
-    std::string name;
+    struct Incomplete {};
+
+
+    std::string name; // TODO: use some ID (hash) instead of name?
 
     std::vector<SystemInvocation> systems;
 
@@ -59,18 +65,12 @@ struct TestRunner {
 
   TestRunner(flecs::world& world);
 
-
-  // TODO: move to UnitTest project and instead use http port to get results and add entities
-  /*std::vector<UnitTest::Result> getAllTestResults();*/
-
   template <typename... Args>
   static void addTestEntity(flecs::world& world, const char* name, Args&&... args) {
     world.entity(name)
       .set<UnitTest>({ std::forward<Args>(args)... });
   }
-
-  static void initialize(flecs::world& world, std::function<void(flecs::world&)> modulesProvider);
-
+  
   // This handles the difference between Windows (MSVC) and Linux/Mac (GCC/Clang)
 #if defined(_MSC_VER) // Windows
 #include <typeinfo>
@@ -103,35 +103,36 @@ struct TestRunner {
 
   template <typename T>
   static void registerModule(flecs::world& world) {
-    // Automatically get the string name from the type T
-    std::string name = get_type_name<T>();
+    // Registered test runner itselft if not registered
+    world.import<TestRunner>();
 
-    // Store in map to allow for later import in test world
-    _moduleRegistry[name] = [](flecs::world& w) {
-      w.import<T>();
-    };
 
     // Import module to make available for query
     auto m = world.import<T>();
     m.add<TestableModule>();
 
+
+    // Automatically get the string name from the type T
+    std::string name = get_type_name<T>();
+
     std::cout << "Registered module: " << name << std::endl;
+    // Store in map to allow for later import in test world
+    _moduleRegistry[name] = [](flecs::world& w) {
+      w.import<T>();
+    };
   }
 
-  static void setLogLevel(LogLevel logLevel) {
-    _logLevel = logLevel;
-  }
+  static void setLogLevel(LogLevel logLevel);
+
 private:
-  static void registerReflection(flecs::world& world);
+  using ModuleRegistry = std::map<std::string, void(*)(flecs::world&)>;
+
+  static std::optional<std::string> matchModuleFromSystemPath(std::string systemFullPath);
   static bool compareWorlds(flecs::world& world1, flecs::world& world2);
   static void runUnitTest(flecs::entity e, UnitTest& test);
-  static std::optional<std::string> importBySystemName(flecs::world& world, std::string systemFullPath);
-  static void runSystem(flecs::world& world, const SystemInvocation& sys);
+  static void runUnitTestIncomplete(flecs::entity e, UnitTest& test);
 
-  static LogLevel _logLevel;
-  static std::function<void(flecs::world&)> _modulesProvider;
-  
-  static std::map<std::string, void(*)(flecs::world&)> _moduleRegistry;
+  inline static ModuleRegistry _moduleRegistry;
 };
 
 
