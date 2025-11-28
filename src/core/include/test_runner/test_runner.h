@@ -6,8 +6,29 @@
 #include <functional>
 #include <optional>
 #include <map>
+#include <stdexcept>
 
-struct TestRunner {
+class TestRunner {
+public:
+  using ModuleRegistry = std::map<std::string, void(*)(flecs::world&)>;
+
+  template <typename Derived>
+  class AutoPrefixedError : public std::runtime_error {
+  public:
+    explicit AutoPrefixedError(const std::string& message) 
+      : std::runtime_error(generatePrefix() + message) {}
+
+  private:
+    // Helper to get the nice "Namespace::Class" string
+    static std::string generatePrefix() {
+      return TestRunner::getTypeName<Derived>();
+    }
+  };
+
+  struct Error : public AutoPrefixedError<Error> {
+    using AutoPrefixedError::AutoPrefixedError;
+  };
+
   /* TODO:
   * Maybe support system triggered by an event?
   * */
@@ -25,6 +46,10 @@ struct TestRunner {
   };
 
   struct UnitTest {
+    struct Error : public AutoPrefixedError<Error> {
+      using AutoPrefixedError::AutoPrefixedError;
+    };
+
     // Tags
     struct Ready {};
 
@@ -44,7 +69,7 @@ struct TestRunner {
     std::string scriptActual;
     std::string scriptExpected;
 
-    std::optional<std::string> validate() const {
+    std::optional<std::string> validate(bool complete = true) const {
       std::optional<std::string> statusMessage = std::nullopt;
       if(name.empty()) {
         statusMessage = "Name is empty";
@@ -52,11 +77,19 @@ struct TestRunner {
         statusMessage = "No systems to run";
       } else if(scriptActual.empty()) {
         statusMessage = "Actual script is empty";
-      } else if(scriptExpected.empty()) {
+      } else if(complete && scriptExpected.empty()) {
         statusMessage = "Expected script is empty";
       }
       return statusMessage;
     }
+
+    // TODO: define elsewhere
+    /*using ModuleRegistry = std::map<std::string, void(*)(flecs::world&)>;*/
+
+    void normalizeSystemNames();
+    void runSystems(flecs::world& world);
+
+    std::vector<std::string> getSystemNames();
   };
 
   // Module tag
@@ -75,7 +108,7 @@ struct TestRunner {
 #if defined(_MSC_VER) // Windows
 #include <typeinfo>
   template <typename T>
-  static std::string get_type_name() {
+  static std::string getTypeName() {
     std::string name = typeid(T).name();
     // MSVC returns "struct MyModule" or "class MyModule". 
     // We remove the prefix to get just "MyModule".
@@ -90,7 +123,7 @@ struct TestRunner {
 #include <typeinfo>
 #include <memory>
   template <typename T>
-  static std::string get_type_name() {
+  static std::string getTypeName() {
       int status;
       // specific GCC/Clang API to "demangle" the weird internal names
       std::unique_ptr<char, void(*)(void*)> res {
@@ -113,7 +146,7 @@ struct TestRunner {
 
 
     // Automatically get the string name from the type T
-    std::string name = get_type_name<T>();
+    std::string name = getTypeName<T>();
 
     std::cout << "Registered module: " << name << std::endl;
     // Store in map to allow for later import in test world
@@ -125,18 +158,14 @@ struct TestRunner {
   static void setLogLevel(LogLevel logLevel);
 
 private:
-  using ModuleRegistry = std::map<std::string, void(*)(flecs::world&)>;
 
-  static std::optional<std::string> matchModuleFromSystemPath(std::string systemFullPath);
+  
+
+  /*static std::optional<std::string> matchModuleFromSystemPath(std::string systemFullPath);*/
   static bool compareWorlds(flecs::world& world1, flecs::world& world2);
   static void runUnitTest(flecs::entity e, UnitTest& test);
   static void runUnitTestIncomplete(flecs::entity e, UnitTest& test);
 
   inline static ModuleRegistry _moduleRegistry;
 };
-
-
-
-
-
 

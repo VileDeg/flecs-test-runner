@@ -4,11 +4,24 @@
 
 #include <string>
 #include <iostream>
-#include <thread>
+#include <algorithm>
+#include <sstream>
 
 #include "reflection.h"
 
+// ================================================================================================
+// Internal classes and methods
+// ================================================================================================
+
+class ModuleImporter;
+
+
 using LogLevel = TestRunner::LogLevel;
+
+enum class World {
+  Actual,
+  Expected
+};
 
 static LogLevel s_LogLevel = LogLevel::WARN;
 
@@ -20,56 +33,24 @@ static LogLevel s_LogLevel = LogLevel::WARN;
 
 class NullBuffer : public std::streambuf {
 protected:
-    int overflow(int c) override { return c; }
+  int overflow(int c) override { return c; }
 };
 
 class NullStream : public std::ostream {
 public:
-    NullStream() : std::ostream(&m_sb) {}
+  NullStream() : std::ostream(&m_sb) {}
 private:
-    NullBuffer m_sb;
+  NullBuffer m_sb;
 };
-    
+
 static NullStream nullStream;
 
-void TestRunner::setLogLevel(LogLevel logLevel) {
-  s_LogLevel = logLevel;
-}
+static std::optional<std::string> matchModuleFromSystemPath(
+  std::string systemFullPath, const TestRunner::ModuleRegistry& registry
+);
+
 
 // ================================================================================================
-bool TestRunner::compareWorlds(flecs::world& world1, flecs::world& world2) {
-    pinfo << "\nWorld Comparison (using serialization):\n";
-    pinfo << "========================================\n";
-
-    // Serialize both worlds to JSON
-    flecs::string json1 = world1.to_json();
-    flecs::string json2 = world2.to_json();
-
-    pinfo << "\nWorld 1 JSON:\n";
-    pinfo << json1 << "\n";
-
-    pinfo << "\nWorld 2 JSON:\n";
-    pinfo << json2 << "\n";
-
-    // Compare the serialized representations
-    bool matches = (json1 == json2);
-
-    pinfo << "\n";
-    if(matches) {
-        pinfo << "WORLDS MATCH!\n";
-        pinfo << "The serialized JSON representations are identical.\n";
-    } else {
-        pinfo << "WORLDS DO NOT MATCH!\n";
-        pinfo << "The serialized JSON representations differ.\n";
-
-        // Show size difference as a hint
-        pinfo << "\nJSON sizes: World1=" << json1.size()
-            << " bytes, World2=" << json2.size() << " bytes\n";
-    }
-
-    return matches;
-}
-
 static std::optional<flecs::system> getSystemByName(
   const flecs::world& world, const std::string& systemName
 ) {
@@ -90,49 +71,223 @@ static std::optional<flecs::system> getSystemByName(
   return world.system(systemEntity);
 }
 
-void TestRunner::runUnitTest(flecs::entity e, UnitTest& test)
-{
-  pinfo << "Running test: " << test.name << "\n";
+// ================================================================================================
+static std::optional<std::string> matchModuleFromSystemPath(
+  std::string systemFullPath, const TestRunner::ModuleRegistry& registry
+) {
+  std::string current_path = systemFullPath;
 
-  auto status = test.validate();
-  if(status.has_value()) {
-      perror << "Failed to run test " << test.name << ": " << *status << "\n";
-      e.set<UnitTest::Executed>({ *status });
-      return;
-  }
+  // Iteratively strip the last "::Section" until we find a match
+  while(true) {
+    size_t pos = current_path.rfind("::");
+    if(pos == std::string::npos) {
+      break; // No more scopes to strip
+    }
 
-  // Create ACTUAL world
-  flecs::world worldActual;
-  // Create EXPECTED world
-  flecs::world worldExpected;
-  // Import testable systems & components
- 
+    // Cut off the last part to get the potential module name
+    current_path = current_path.substr(0, pos);
 
-  for(auto& sys : test.systems) {
-    auto m = matchModuleFromSystemPath(sys.name);
-    if(m.has_value()) {
-      _moduleRegistry[*m](worldActual);
-      _moduleRegistry[*m](worldExpected);
+    // Check if this substring matches a registered module
+    if(registry.count(current_path)) {
+      pinfo << "[Info] System '" << systemFullPath
+        << "' belongs to module '" << current_path << "\n";
+      //_moduleRegistry[current_path](world);
+      return current_path;
     }
   }
 
-  // Set up world
-  worldActual.script_run("ScriptActual", test.scriptActual.c_str());
+  pwarn << "[Error] Could not find a registered module for system path: '"
+    << systemFullPath << "'\n";
+  return std::nullopt;
+}
 
-  for(auto& sys : test.systems) {
+
+
+
+// ================================================================================================
+// ModuleImporter
+// ================================================================================================
+
+class ModuleImporter {
+public:
+  template <typename Derived>
+  using AutoPrefixedError = TestRunner::AutoPrefixedError<Derived>;
+
+  struct ImportError : public AutoPrefixedError<ImportError> {
+    using AutoPrefixedError::AutoPrefixedError;
+  };
+
+  ModuleImporter(const TestRunner::ModuleRegistry& registry)
+    : _moduleRegistry(registry) { }
+
+  void resolveModules(std::vector<std::string> systems)
+  {
+    bool anyModuleFound = false;
+    for(auto& sys : systems) {
+      auto m = matchModuleFromSystemPath(sys, _moduleRegistry);
+      if(m.has_value()) {
+        anyModuleFound = true;
+        _usedModules.push_back(*m);
+      }
+    }
+    if(!anyModuleFound) {
+      throw ImportError("None of the systems belong to any module");
+    }
+  }
+
+  void importAll(flecs::world& world) const
+  {
+    if(_usedModules.empty()) {
+      throw ImportError("No modules to import");
+    }
+    for(auto& m : _usedModules) {
+      _moduleRegistry.at(m)(world);
+    }
+  }
+
+private:
+  const TestRunner::ModuleRegistry& _moduleRegistry;
+  std::vector<std::string> _usedModules;
+};
+
+// ================================================================================================
+static void runWorld(
+  flecs::world& world, World type, TestRunner::UnitTest& test, const ModuleImporter& importer
+) {
+  importer.importAll(world);
+
+  if(type == World::Actual) {
+    world.script_run("ScriptActual", test.scriptActual.c_str());
+    test.runSystems(world);
+  } else {
+    world.script_run("ScriptExpected", test.scriptExpected.c_str());
+  }
+}
+
+
+
+// ================================================================================================
+// UnitTest
+// ================================================================================================
+
+// ================================================================================================
+std::vector<std::string> TestRunner::UnitTest::getSystemNames() {
+  std::vector<std::string> names;
+  names.reserve(systems.size()); 
+
+  std::transform(
+    systems.begin(),
+    systems.end(),
+    std::back_inserter(names),
+    [](const TestRunner::SystemInvocation& si) { 
+      return si.name;
+    }
+  );
+  return names;
+}
+
+// ================================================================================================
+void TestRunner::UnitTest::normalizeSystemNames()
+{
+  for(auto& sys : systems) {
+    // Normalize system name: replace "." with "::" to handle both notations
+    size_t pos = 0;
+    if((pos = sys.name.find(".", pos)) == std::string::npos) {
+      continue;
+    }
+
+    std::string normalizedName = sys.name;
+    do {
+      normalizedName.replace(pos, 1, "::");
+      pos += 2; // Move past the replacement
+    } while((pos = normalizedName.find(".", pos)) != std::string::npos);
+    sys.name = normalizedName;
+  }
+}
+
+// ================================================================================================
+void TestRunner::UnitTest::runSystems(flecs::world& world)
+{
+  for(auto& sys : systems) {
     // Run system
     for(int i = 0; i < sys.timesToRun; ++i) {
-      auto system = getSystemByName(worldActual, sys.name);
+      auto system = getSystemByName(world, sys.name);
       if(!system.has_value()) {
-        continue;
+        std::stringstream ss;
+        ss << "System " << sys.name << " not found";
+        throw Error(ss.str());
       }
 
       pinfo << "[" << i << "] Running system '" << sys.name << "'\n";
       system->run();
     }
   }
+}
 
-  worldExpected.script_run("ScriptExpected", test.scriptExpected.c_str());
+
+// ================================================================================================
+// TestRunner
+// ================================================================================================
+
+// ================================================================================================
+void TestRunner::setLogLevel(LogLevel logLevel) {
+  s_LogLevel = logLevel;
+}
+
+// ================================================================================================
+bool TestRunner::compareWorlds(flecs::world& world1, flecs::world& world2) {
+  pinfo << "\nWorld Comparison (using serialization):\n";
+  pinfo << "========================================\n";
+
+  // Serialize both worlds to JSON
+  flecs::string json1 = world1.to_json();
+  flecs::string json2 = world2.to_json();
+
+  pinfo << "\nWorld 1 JSON:\n";
+  pinfo << json1 << "\n";
+
+  pinfo << "\nWorld 2 JSON:\n";
+  pinfo << json2 << "\n";
+
+  // Compare the serialized representations
+  bool matches = (json1 == json2);
+
+  pinfo << "\n";
+  if(matches) {
+    pinfo << "WORLDS MATCH!\n";
+    pinfo << "The serialized JSON representations are identical.\n";
+  } else {
+    pinfo << "WORLDS DO NOT MATCH!\n";
+    pinfo << "The serialized JSON representations differ.\n";
+
+    // Show size difference as a hint
+    pinfo << "\nJSON sizes: World1=" << json1.size()
+      << " bytes, World2=" << json2.size() << " bytes\n";
+  }
+
+  return matches;
+}
+
+// ================================================================================================
+void TestRunner::runUnitTest(flecs::entity e, UnitTest& test)
+{
+  pinfo << "Running test: " << test.name << "\n";
+
+  auto status = test.validate();
+  if(status.has_value()) {
+    std::stringstream ss;
+    ss << "Failed to run test " << test.name << ": " << *status << "\n";
+    e.set<UnitTest::Executed>({ *status });
+    throw Error(ss.str());
+  }
+  test.normalizeSystemNames();
+
+  flecs::world worldActual, worldExpected;
+
+  ModuleImporter importer(_moduleRegistry);
+  importer.resolveModules(test.getSystemNames());
+  runWorld(worldActual, World::Actual, test, importer);
+  runWorld(worldExpected, World::Expected, test, importer);
 
   std::string statusMessage;
   if(compareWorlds(worldActual, worldExpected)) {
@@ -144,78 +299,29 @@ void TestRunner::runUnitTest(flecs::entity e, UnitTest& test)
   e.set<UnitTest::Executed>({ statusMessage });
 }
 
-
+// ================================================================================================
 void TestRunner::runUnitTestIncomplete(flecs::entity e, UnitTest& test)
 {
   pinfo << "Running test (Incomplete): " << test.name << "\n";
 
-  auto status = test.validate();
+  auto status = test.validate(false);
   if(status.has_value()) {
-    perror << "Failed to run test " << test.name << ": " << *status << "\n";
+    std::stringstream ss;
+    ss << "Failed to run test " << test.name << ": " << *status << "\n";
     e.set<UnitTest::Executed>({ *status });
     return;
   }
+  test.normalizeSystemNames();
 
-  // Create ACTUAL world
   flecs::world worldActual;
- 
-  for(auto& sys : test.systems) {
-    auto m = matchModuleFromSystemPath(sys.name);
-    if(m.has_value()) {
-      _moduleRegistry[*m](worldActual);
-    }
-  }
 
-  // Set up world
-  worldActual.script_run("ScriptActual", test.scriptActual.c_str());
-
-  for(auto& sys : test.systems) {
-    // Run system
-    for(int i = 0; i < sys.timesToRun; ++i) {
-      auto system = getSystemByName(worldActual, sys.name);
-      if(!system.has_value()) {
-        continue;
-      }
-
-      pinfo << "[" << i << "] Running system '" << sys.name << "'\n";
-      system->run();
-    }
-  }
+  ModuleImporter importer(_moduleRegistry);
+  importer.resolveModules(test.getSystemNames());
+  runWorld(worldActual, World::Actual, test, importer);
 
   std::string worldExpectedSerialized = worldActual.to_json();
   e.set<UnitTest::Executed>({ "OK", worldExpectedSerialized });
 }
-
-// ================================================================================================
-
-std::optional<std::string> TestRunner::matchModuleFromSystemPath(std::string systemFullPath) {
-  std::string current_path = systemFullPath;
-
-  // Iteratively strip the last "::Section" until we find a match
-  while (true) {
-    size_t pos = current_path.rfind("::");
-    if (pos == std::string::npos) {
-      break; // No more scopes to strip
-    }
-
-    // Cut off the last part to get the potential module name
-    current_path = current_path.substr(0, pos);
-
-    // Check if this substring matches a registered module
-    if (_moduleRegistry.count(current_path)) {
-      pinfo << "[Info] System '" << systemFullPath 
-        << "' belongs to module '" << current_path << "\n";
-      //_moduleRegistry[current_path](world);
-      return current_path;
-    }
-  }
-
-  pwarn << "[Error] Could not find a registered module for system path: '" 
-    << systemFullPath << "'\n";
-  return std::nullopt;
-}
-
-
 
 // ================================================================================================
 TestRunner::TestRunner(flecs::world& world) {
@@ -264,13 +370,12 @@ TestRunner::TestRunner(flecs::world& world) {
     .without<UnitTest::Executed>()
     .without<UnitTest::Incomplete>()
     .each([this](flecs::entity e, UnitTest& test) {
-      //std::thread t([this, e, &test]() {
-      runUnitTest(e, test);
-      //});
-            
-      //if(t.joinable()) {
-      //t.join();
-      //}
+      try {
+        runUnitTest(e, test);
+      }
+      catch (const std::runtime_error& e) {
+        perror << "Error [" << __FUNCTION__ << "]: " << e.what() << "\n";
+      }
     });
 
   world.system<UnitTest>("TestRunnerIncomplete")
@@ -280,14 +385,12 @@ TestRunner::TestRunner(flecs::world& world) {
     .without<UnitTest::Executed>()
     .with<UnitTest::Incomplete>()
     .each([this](flecs::entity e, UnitTest& test) {
-      //std::thread t([this, e, &test]() {
-      runUnitTestIncomplete(e, test);
-      //});
-
-      //if(t.joinable()) {
-      //t.join();
-      //}
+      try {
+        runUnitTestIncomplete(e, test);
+      }
+      catch (const std::runtime_error& e) {
+        perror << "Error [" << __FUNCTION__ << "]: " << e.what() << "\n";
+      }
   });
 }
-
 
