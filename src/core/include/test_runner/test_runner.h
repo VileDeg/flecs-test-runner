@@ -10,7 +10,7 @@
 
 class TestRunner {
 public:
-  using ModuleRegistry = std::map<std::string, void(*)(flecs::world&)>;
+  using ModuleImporterMap = std::map<std::string, void(*)(flecs::world&)>;
 
   template <typename Derived>
   class AutoPrefixedError : public std::runtime_error {
@@ -55,11 +55,12 @@ public:
 
     struct Executed {
       std::string statusMessage;
-      std::string worldExpectedSerialized;
     };
     struct Passed {};
 
-    struct Incomplete {};
+    struct Incomplete {
+      std::string worldExpectedSerialized;
+    };
 
 
     std::string name; // TODO: use some ID (hash) instead of name?
@@ -82,9 +83,6 @@ public:
       }
       return statusMessage;
     }
-
-    // TODO: define elsewhere
-    /*using ModuleRegistry = std::map<std::string, void(*)(flecs::world&)>;*/
 
     void normalizeSystemNames();
     void runSystems(flecs::world& world);
@@ -136,7 +134,7 @@ public:
 
   template <typename T>
   static void registerModule(flecs::world& world) {
-    // Registered test runner itselft if not registered
+    // Registered test runner itself if not registered
     world.import<TestRunner>();
 
 
@@ -144,28 +142,26 @@ public:
     auto m = world.import<T>();
     m.add<TestableModule>();
 
-
     // Automatically get the string name from the type T
     std::string name = getTypeName<T>();
 
     std::cout << "Registered module: " << name << std::endl;
     // Store in map to allow for later import in test world
-    _moduleRegistry[name] = [](flecs::world& w) {
+    _moduleImporterRegistry[name] = [](flecs::world& w) {
       w.import<T>();
     };
   }
-
+  
   static void setLogLevel(LogLevel logLevel);
 
 private:
-
-  
-
-  /*static std::optional<std::string> matchModuleFromSystemPath(std::string systemFullPath);*/
   static bool compareWorlds(flecs::world& world1, flecs::world& world2);
   static void runUnitTest(flecs::entity e, UnitTest& test);
   static void runUnitTestIncomplete(flecs::entity e, UnitTest& test);
 
-  inline static ModuleRegistry _moduleRegistry;
+  /**
+  * Maps module name to importer function.
+  */
+  inline static ModuleImporterMap _moduleImporterRegistry; // TODO: use function object instead of func ptr?
 };
 

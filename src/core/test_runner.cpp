@@ -46,7 +46,7 @@ private:
 static NullStream nullStream;
 
 static std::optional<std::string> matchModuleFromSystemPath(
-  std::string systemFullPath, const TestRunner::ModuleRegistry& registry
+  std::string systemFullPath, const TestRunner::ModuleImporterMap& registry
 );
 
 
@@ -73,7 +73,7 @@ static std::optional<flecs::system> getSystemByName(
 
 // ================================================================================================
 static std::optional<std::string> matchModuleFromSystemPath(
-  std::string systemFullPath, const TestRunner::ModuleRegistry& registry
+  std::string systemFullPath, const TestRunner::ModuleImporterMap& registry
 ) {
   std::string current_path = systemFullPath;
 
@@ -117,7 +117,7 @@ public:
     using AutoPrefixedError::AutoPrefixedError;
   };
 
-  ModuleImporter(const TestRunner::ModuleRegistry& registry)
+  ModuleImporter(const TestRunner::ModuleImporterMap& registry)
     : _moduleRegistry(registry) { }
 
   void resolveModules(std::vector<std::string> systems)
@@ -146,7 +146,7 @@ public:
   }
 
 private:
-  const TestRunner::ModuleRegistry& _moduleRegistry;
+  const TestRunner::ModuleImporterMap& _moduleRegistry;
   std::vector<std::string> _usedModules;
 };
 
@@ -163,7 +163,6 @@ static void runWorld(
     world.script_run("ScriptExpected", test.scriptExpected.c_str());
   }
 }
-
 
 
 // ================================================================================================
@@ -284,7 +283,7 @@ void TestRunner::runUnitTest(flecs::entity e, UnitTest& test)
 
   flecs::world worldActual, worldExpected;
 
-  ModuleImporter importer(_moduleRegistry);
+  ModuleImporter importer(_moduleImporterRegistry);
   importer.resolveModules(test.getSystemNames());
   runWorld(worldActual, World::Actual, test, importer);
   runWorld(worldExpected, World::Expected, test, importer);
@@ -315,12 +314,13 @@ void TestRunner::runUnitTestIncomplete(flecs::entity e, UnitTest& test)
 
   flecs::world worldActual;
 
-  ModuleImporter importer(_moduleRegistry);
+  ModuleImporter importer(_moduleImporterRegistry);
   importer.resolveModules(test.getSystemNames());
   runWorld(worldActual, World::Actual, test, importer);
 
   std::string worldExpectedSerialized = worldActual.to_json();
-  e.set<UnitTest::Executed>({ "OK", worldExpectedSerialized });
+  e.set<UnitTest::Executed>({ "OK" });
+  e.set<UnitTest::Incomplete>({ worldExpectedSerialized });
 }
 
 // ================================================================================================
@@ -337,13 +337,12 @@ TestRunner::TestRunner(flecs::world& world) {
   });
 
   world.component<UnitTest::Ready>();
-  world.component<UnitTest::Incomplete>();
-
   world.component<UnitTest::Passed>();
-
   world.component<UnitTest::Executed>()
-    .member<std::string>("statusMessage")
+    .member<std::string>("statusMessage");
+  world.component<UnitTest::Incomplete>()
     .member<std::string>("worldExpectedSerialized");
+    
 
   world.component<SystemInvocation>()
     .member<std::string>("name")
