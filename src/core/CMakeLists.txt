@@ -1,7 +1,6 @@
 set(LIB_NAME ${TEST_RUNNER_LIB_NAME})
 set(SRC_DIR "./")
 
-# Explicit source file list (no GLOB_RECURSE)
 set(SRC_FILES
     test_runner.cpp
     reflection.h
@@ -14,7 +13,6 @@ add_library(
   ${SRC_FILES}
 )
 
-# Add src directory to include path so headers can be found
 target_include_directories(
   ${LIB_NAME} 
   PRIVATE 

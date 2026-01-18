@@ -1,7 +1,7 @@
 set(EXE_NAME "Tests")
 set(SRC_DIR "./")
 
-# Declare the dependency: Download Google Test from GitHub
+# Download Google Test from GitHub
 FetchContent_Declare(
     googletest
     GIT_REPOSITORY https://github.com/google/googletest.git

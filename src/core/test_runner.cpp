@@ -348,7 +348,6 @@ TestRunner::TestRunner(flecs::world& world) {
     .member<std::string>("name")
     .member<int>("timesToRun");
 
-  // Register reflection for std::vector<int>
   world.component<std::vector<SystemInvocation>>()
     .opaque(reflection::std_vector_support<SystemInvocation>);
 
