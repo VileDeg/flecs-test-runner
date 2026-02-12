@@ -117,8 +117,13 @@ public:
     using AutoPrefixedError::AutoPrefixedError;
   };
 
-  ModuleImporter(const TestRunner::ModuleImporterMap& registry)
-    : _moduleRegistry(registry) { }
+  ModuleImporter(
+		const TestRunner::ModuleImporterMap& moduleRegistry, 
+		const TestRunner::TypeRegistry& typRegistry
+	)
+    : _moduleRegistry(moduleRegistry)
+		, _typeRegistry(typRegistry)
+	{ }
 
   void resolveModules(std::vector<std::string> systems)
   {
@@ -143,12 +148,253 @@ public:
     for(auto& m : _usedModules) {
       _moduleRegistry.at(m)(world);
     }
+
+		// Register all additional metadata for types
+		_typeRegistry.applyAll(world);
+
+		/*for (auto& typeImporter : _typeRegistry) {
+			typeImporter(world);
+		}*/
   }
 
 private:
   const TestRunner::ModuleImporterMap& _moduleRegistry;
+	const TestRunner::TypeRegistry& _typeRegistry;
+	// TODO: used types
+
   std::vector<std::string> _usedModules;
 };
+
+using WorldConfiguration = TestRunner::UnitTest::WorldConfiguration;
+
+using Operator = TestRunner::UnitTest::Operator;
+
+using Operators = TestRunner::UnitTest::Operators;
+
+using TypeMetadata = TestRunner::TypeMetadata;
+
+static void applyConfiguration(
+	flecs::world& world, TestRunner::UnitTest::WorldConfiguration configuration
+) {
+	for (auto& serializedEntity : configuration) {
+		auto entity = world.entity();
+		entity.from_json(serializedEntity.c_str());
+	}
+}
+
+struct ResolvedProperty {
+	flecs::entity type;
+	void* ptr; // Actual memory address of the property
+	TypeMetadata::ComparisonFuncs funcs;
+};
+
+
+static std::string getTopSegment(const Operator::Path& path, const char delim = '.') {
+	std::stringstream ss(path);
+	std::string segment;
+
+	std::getline(ss, segment, delim);
+	return segment;
+}
+
+static std::string popSegment(Operator::Path& path, const char delim = '.') {
+	std::stringstream ss(path);
+	std::string segment;
+
+	if (std::getline(ss, segment, delim)) {
+		// Extract the remainder of the stream into the original path
+		std::string remainder;
+		if (std::getline(ss, remainder, '\0')) {
+			path = remainder;
+		} else {
+			path = ""; // No more segments remain
+		}
+	}
+
+	return segment;
+}
+
+static bool isAnySegment(const Operator::Path& path, const char delim = '.') {
+	return path.find(delim) != std::string::npos;
+}
+
+static ResolvedProperty resolvePath(
+	flecs::world& ecs, flecs::entity e, const Operator::Path& path
+) {
+	std::stringstream ss(path);
+	std::string segment;
+
+	// Start with the first segment (The Component)
+	std::getline(ss, segment, '.');
+	flecs::entity comp_id = ecs.lookup(segment.c_str());
+	void* current_ptr = e.get_mut(comp_id); // Get base memory
+
+	flecs::cursor cur(ecs, comp_id, current_ptr);
+	// need to do push here?
+
+	while (std::getline(ss, segment, '.')) {
+		// Handle array syntax: member[index]
+		size_t bracket_open = segment.find('[');
+		if (bracket_open != std::string::npos) {
+			std::string member_name = segment.substr(0, bracket_open);
+			int index = std::stoi(segment.substr(bracket_open + 1, segment.find(']') - bracket_open - 1));
+
+			cur.member(member_name.c_str());
+			cur.push();     // Enter the array
+			cur.elem(index); // Move to index
+		} else {
+			cur.member(segment.c_str());
+		}
+
+		// If there are more segments, we need to "push" into the struct
+		if (!ss.eof()) {
+			cur.push();
+		}
+	}
+
+	flecs::entity type_ent = cur.get_type();
+	const auto* meta = type_ent.try_get<TypeMetadata>();
+
+	return { 
+		type_ent, 
+		cur.get_ptr(),
+		meta ? meta->funcs : TypeMetadata::ComparisonFuncs{}
+	};
+}
+
+static bool compareWorldsComplete(flecs::world& world1, flecs::world& world2) {
+	pinfo << "\nWorld Comparison (using serialization):\n";
+	pinfo << "========================================\n";
+
+
+
+	//world1.filter_builder()
+	//	.term<flecs::Component>().not_() // Optional: filters out components themselves
+	//	.build()
+	//	.each([&](flecs::entity e) {
+
+	//	// 3. Serialize Entity to JSON
+	//	// to_json() returns a std::string or char* depending on arguments
+	//	std::string json_out = e.to_json();
+
+	//	std::cout << "Entity " << e.name() << " JSON: " << json_out << std::endl;
+
+	//	// 4. Deserialize JSON back to Entity
+	//	// This updates the entity state based on the JSON content
+	//	e.from_json(json_out.c_str());
+	//		});
+
+	// Serialize both worlds to JSON
+	flecs::string json1 = world1.to_json();
+	flecs::string json2 = world2.to_json();
+
+	pinfo << "\nWorld 1 JSON:\n";
+	pinfo << json1 << "\n";
+
+	pinfo << "\nWorld 2 JSON:\n";
+	pinfo << json2 << "\n";
+
+	// Compare the serialized representations
+	bool matches = (json1 == json2);
+
+	pinfo << "\n";
+	if (matches) {
+		pinfo << "WORLDS MATCH!\n";
+		pinfo << "The serialized JSON representations are identical.\n";
+	} else {
+		pinfo << "WORLDS DO NOT MATCH!\n";
+		pinfo << "The serialized JSON representations differ.\n";
+
+		// Show size difference as a hint
+		pinfo << "\nJSON sizes: World1=" << json1.size()
+			<< " bytes, World2=" << json2.size() << " bytes\n";
+	}
+
+	return matches;
+}
+
+static bool compareEntities(flecs::entity initial, flecs::entity expected, Operator::Type operatorType) {
+	if (operatorType == Operator::Type::EQ) {
+		return initial.to_json() == expected.to_json();
+	} else if (operatorType == Operator::Type::NEQ) {
+		return initial.to_json() != expected.to_json();
+	} else {
+		pwarn << "Entity comparison supports only '==' or '!==' comparison types\n";
+		// TODO: warn comparsion will fail for entities
+		return false;
+	}
+}
+
+static bool compareProperties(ResolvedProperty initial, ResolvedProperty expected, Operator::Type operatorType) {
+	// Must be same since they come from the same component entity
+	assert(initial.funcs == expected.funcs);
+	auto funcs = initial.funcs;
+	
+	if (operatorType == Operator::Type::EQ) {
+		return funcs.eq(initial.ptr, expected.ptr);
+	} else if (operatorType == Operator::Type::NEQ) {
+		return funcs.neq(initial.ptr, expected.ptr);
+	} else if (operatorType == Operator::Type::LT) {
+		return funcs.lt(initial.ptr, expected.ptr);
+	} else if (operatorType == Operator::Type::LTE) {
+		return funcs.lte(initial.ptr, expected.ptr);
+	} else if (operatorType == Operator::Type::GT) {
+		return funcs.gt(initial.ptr, expected.ptr);
+	} else if (operatorType == Operator::Type::GTE) {
+		return funcs.gte(initial.ptr, expected.ptr);
+	} else {
+		pwarn << __func__ << ": invalid comparison operator\n";
+		return false;
+	}
+}
+
+static bool compareWorlds(
+	flecs::world& initial, flecs::world& expected, TestRunner::UnitTest::Operators operators
+) {
+	if (operators.empty()) {
+		// TODO: support == vs !==
+		return compareWorldsComplete(initial, expected);
+	}
+
+	auto getEntity = [&](flecs::world& ecs, const std::string& name) -> flecs::entity {
+			auto entity = ecs.lookup(name.c_str());
+			if (entity == 0) {
+				pwarn << "Comparison failed: Enttity with name " << name << " not found\n";
+			}
+			return entity;
+		};
+
+	bool comparisonFailed = false;
+
+	for (auto& oper : operators) {
+		std::string entityName = popSegment(oper.path);
+		if (entityName.empty()) {
+			// TODO: warning operator path empty
+			continue;
+		}
+
+		auto initialEntity = getEntity(initial, entityName);
+		auto expectedEntity = getEntity(expected, entityName);
+
+		if (!isAnySegment(oper.path)) {
+			if (!compareEntities(initialEntity, expectedEntity, oper.type)) {
+				comparisonFailed = true;
+				break;
+			}
+		}
+
+		auto propertyIntial = resolvePath(initial, initialEntity, oper.path);
+		auto propertyExpected = resolvePath(initial, expectedEntity, oper.path);
+
+		if (!compareProperties(propertyIntial, propertyExpected, oper.type)) {
+			comparisonFailed = true;
+		}
+	}
+
+
+	return !comparisonFailed;
+}
+
 
 // ================================================================================================
 static void runWorld(
@@ -157,10 +403,12 @@ static void runWorld(
   importer.importAll(world);
 
   if(type == World::Actual) {
-    world.script_run("ScriptActual", test.scriptActual.c_str());
+		applyConfiguration(world, test.initialConfiguration);
+    //world.script_run("ScriptActual", test.scriptActual.c_str());
     test.runSystems(world);
   } else {
-    world.script_run("ScriptExpected", test.scriptExpected.c_str());
+		applyConfiguration(world, test.expectedConfiguration);
+    //world.script_run("ScriptExpected", test.scriptExpected.c_str());
   }
 }
 
@@ -238,6 +486,24 @@ bool TestRunner::compareWorlds(flecs::world& world1, flecs::world& world2) {
   pinfo << "\nWorld Comparison (using serialization):\n";
   pinfo << "========================================\n";
 
+	
+
+	//world1.filter_builder()
+	//	.term<flecs::Component>().not_() // Optional: filters out components themselves
+	//	.build()
+	//	.each([&](flecs::entity e) {
+
+	//	// 3. Serialize Entity to JSON
+	//	// to_json() returns a std::string or char* depending on arguments
+	//	std::string json_out = e.to_json();
+
+	//	std::cout << "Entity " << e.name() << " JSON: " << json_out << std::endl;
+
+	//	// 4. Deserialize JSON back to Entity
+	//	// This updates the entity state based on the JSON content
+	//	e.from_json(json_out.c_str());
+	//		});
+
   // Serialize both worlds to JSON
   flecs::string json1 = world1.to_json();
   flecs::string json2 = world2.to_json();
@@ -283,7 +549,7 @@ void TestRunner::runUnitTest(flecs::entity e, UnitTest& test)
 
   flecs::world worldActual, worldExpected;
 
-  ModuleImporter importer(_moduleImporterRegistry);
+  ModuleImporter importer(_moduleImporterRegistry, _typeRegistry);
   importer.resolveModules(test.getSystemNames());
   runWorld(worldActual, World::Actual, test, importer);
   runWorld(worldExpected, World::Expected, test, importer);
@@ -314,7 +580,7 @@ void TestRunner::runUnitTestIncomplete(flecs::entity e, UnitTest& test)
 
   flecs::world worldActual;
 
-  ModuleImporter importer(_moduleImporterRegistry);
+  ModuleImporter importer(_moduleImporterRegistry, _typeRegistry);
   importer.resolveModules(test.getSystemNames());
   runWorld(worldActual, World::Actual, test, importer);
 
@@ -335,6 +601,9 @@ TestRunner::TestRunner(flecs::world& world) {
     .assign_string([](std::string* data, const char* value) {
     *data = value; // Assign new value to std::string
   });
+
+	world.component<std::vector<std::string>>()
+		.opaque(reflection::std_vector_support<std::string>);
 
   world.component<UnitTest::Ready>();
   world.component<UnitTest::Passed>();
