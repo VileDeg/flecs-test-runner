@@ -17,6 +17,11 @@
     1.  Maybe make the view switch to test builder after upload instead of running right away? 
     2.  Or on upload page add buttons "Modify", "Run".
 
+9. Run all systems in a pipeline to correctly handle the staging, merging of the state?
+10. What if a system modifies world state? Would it work?
+11. Pass hardcoded delta time when calling the system
+12. What if a system uses context (user data for system)?
+
 
 TODO:
   workspace - load whole folder and have a list of tests in categories

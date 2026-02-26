@@ -8,13 +8,22 @@ FetchContent_Declare(
     GIT_TAG        52eb8108c5bdec04579160ae17225d66034bd723 # release 1.17.0
 )
 
+FetchContent_Declare(
+    modules
+    GIT_REPOSITORY https://github.com/VileDeg/flecs-test-runner-modules
+    #GIT_TAG master # Use the latest version; replace with a specific tag if needed
+)
+
 # For Windows: Prevent overriding the parent project's compiler/linker settings
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
 # Make the targets available (downloads the source and runs its CMake)
-FetchContent_MakeAvailable(googletest)
+FetchContent_MakeAvailable(
+    googletest
+    modules
+)
 
-# Explicit source file list (no GLOB_RECURSE)
 set(SRC_FILES
+    test_runner_test.cpp
     movement_module_test.cpp
 )
 
@@ -33,15 +42,14 @@ target_include_directories(
   PRIVATE 
     ${SRC_DIR}
     ../core
-    ../../../${MODULES_INCLUDE_DIR}
 )
 
 
 target_link_libraries(
   ${EXE_NAME}
   PRIVATE
-    GTest::gtest_main   
-    flecs::flecs_static # TODO: remove?
+    GTest::gtest_main
+    #flecs::flecs_static
     ${TEST_RUNNER_LIB_NAME}
     ${MODULES_LIB_NAME}
 )

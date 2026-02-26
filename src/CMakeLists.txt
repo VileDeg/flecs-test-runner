@@ -1,8 +1,8 @@
 set(TEST_RUNNER_LIB_NAME TestRunner)
 
 set(MODULES_LIB_NAME Modules)
-set(MODULES_DIR "modules")
-set(MODULES_INCLUDE_DIR "${MODULES_DIR}/include")
+#set(MODULES_DIR "modules")
+#set(MODULES_INCLUDE_DIR "${MODULES_DIR}/include")
 
 include(FetchContent)
 
@@ -15,4 +15,4 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(flecs)
 
 add_subdirectory(core) 
-add_subdirectory(tests)
+add_subdirectory(test)

@@ -3,7 +3,10 @@ set(SRC_DIR "./")
 
 set(SRC_FILES
     test_runner.cpp
+    test_runner_impl.h
+    test_runner_impl.cpp
     reflection.h
+    common.h
     include/test_runner/test_runner.h
 )
 
@@ -23,6 +26,6 @@ target_include_directories(
 
 target_link_libraries(
   ${LIB_NAME}
-  PRIVATE
+  PUBLIC
     flecs::flecs_static
 )

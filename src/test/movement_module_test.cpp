@@ -7,11 +7,12 @@ int add(int a, int b) {
     return a + b;
 }
 
+#if 0
 // Define a Test Suite (Calculator) and a specific Test (AddPositive)
 TEST(Calculator, AddPositive) {
   flecs::world ecs;
 
-#if 0
+
   test_runner::initializeTests(ecs, [](flecs::world& world) {
       world.import<modules::movement>();
   });
@@ -55,16 +56,18 @@ TEST(Calculator, AddPositive) {
   std::cout << "Progress 1\n";
   ecs.progress();
 
-#endif
+
 
   ASSERT_FALSE(false);
 
   // TODO: check if test executed and passed
 }
+#endif
 
-TEST(Calculator, AddNegative) {
-    // Use an EXPECT_ macro to check the result
-    EXPECT_EQ(0, add(-5, 5));
-}
+//TEST(Calculator, AddNegative) {
+//    // Use an EXPECT_ macro to check the result
+//    EXPECT_EQ(0, add(-5, 5));
+//}
+
 
 // NOTE: You do NOT need a main() function if you link to GTest::gtest_main
