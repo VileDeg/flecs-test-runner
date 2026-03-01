@@ -6,10 +6,9 @@
 #include <map>
 #include <stdexcept>
 #include <algorithm>
-
-#include <string>
 #include <iostream>
-#include <algorithm>
+
+#include <type_traits>
 #include <sstream>
 
 #include <flecs.h>
@@ -50,6 +49,9 @@ static std::string getTypeName() {
 template <typename Derived>
 class AutoPrefixedError : public std::runtime_error {
 public:
+	explicit AutoPrefixedError(const char* message)
+		: std::runtime_error(generatePrefix() + ": " + message)
+	{}
 	explicit AutoPrefixedError(const std::string& message)
 		: std::runtime_error(generatePrefix() + ": " + message) 
 	{}
@@ -62,6 +64,88 @@ private:
 };
 
 using WorldCallback = std::function<void(flecs::world&)>;
+
+
+template<typename T>
+using comparison_operand_t = const std::remove_reference_t<T>&;
+
+// Generic Macro-like Trait Structure to avoid repetition
+#define DEFINE_COMPARISON_TRAIT(name, op) \
+template<typename T, typename = void> \
+struct name : std::false_type {}; \
+\
+template<typename T> \
+struct name<T, std::void_t<decltype(std::declval<comparison_operand_t<T>>() op std::declval<comparison_operand_t<T>>())>> \
+    : std::bool_constant<std::is_convertible_v< \
+        decltype(std::declval<comparison_operand_t<T>>() op std::declval<comparison_operand_t<T>>()), \
+        bool>> {}; \
+\
+template<typename T> \
+inline constexpr bool name##_v = name<T>::value;
+
+// Equal (==)
+template<typename T, typename = void>
+struct has_eq : std::false_type {};
+
+template<typename T>
+struct has_eq<T, std::void_t<decltype(std::declval<T>() == std::declval<T>())>> : std::true_type {};
+
+// Not Equal (!==)
+template<typename T, typename = void>
+struct has_neq : std::false_type {};
+
+template<typename T>
+struct has_neq<T, std::void_t<decltype(std::declval<T>() != std::declval<T>())>> : std::true_type {};
+
+// Less Than (<)
+template<typename T, typename = void>
+struct has_lt : std::false_type {};
+
+template<typename T>
+struct has_lt<T, std::void_t<decltype(std::declval<T>() < std::declval<T>())>> : std::true_type {};
+
+// Greater Than (>)
+template<typename T, typename = void>
+struct has_gt : std::false_type {};
+
+template<typename T>
+struct has_gt<T, std::void_t<decltype(std::declval<T>() > std::declval<T>())>> : std::true_type {
+};
+
+// Less Than or Equal (<=)
+template<typename T, typename = void>
+struct has_lte : std::false_type {};
+
+template<typename T>
+struct has_lte<T, std::void_t<decltype(std::declval<T>() <= std::declval<T>())>> : std::true_type {};
+
+// Greater Than or Equal (>=)
+template<typename T, typename = void>
+struct has_gte : std::false_type {};
+
+template<typename T>
+struct has_gte<T, std::void_t<decltype(std::declval<T>() >= std::declval<T>())>> : std::true_type {};
+
+// Helper variable templates
+template<typename T>
+inline static constexpr bool has_eq_v = has_eq<T>::value;
+
+template<typename T>
+inline static constexpr bool has_neq_v = has_neq<T>::value;
+
+template<typename T>
+inline static constexpr bool has_lt_v = has_lt<T>::value;
+
+template<typename T>
+inline static constexpr bool has_gt_v = has_gt<T>::value;
+
+template<typename T>
+inline static constexpr bool has_lte_v = has_lte<T>::value;
+
+template<typename T>
+inline static constexpr bool has_gte_v = has_gte<T>::value;
+
+
 
 
 struct TypeMetadata {
@@ -172,13 +256,68 @@ private:
 	std::vector<WorldCallback> _registrars;
 };
 
-
 enum class LogLevel {
 	FATAL = 0,
 	ERROR,
 	WARN,
 	INFO,
 	TRACE,
+};
+
+class Log {
+public:
+	using Level = LogLevel; // TestRunnerDetail::
+
+	// Proxy class to handle newline on destruction
+	class LineLogger {
+	public:
+		LineLogger(std::ostream& os, bool active) : _os(os), _active(active) {}
+
+		// Prevent copying and moving to ensure it stays a temporary
+		LineLogger(const LineLogger&) = delete;
+		LineLogger& operator=(const LineLogger&) = delete;
+		LineLogger(LineLogger&&) = delete;
+		LineLogger& operator=(LineLogger&&) = delete;
+
+		// Finalize the line when the temporary object is destroyed
+		~LineLogger() {
+			if (_active) {
+				_os << "\n";
+			}
+		}
+
+		// Ref-qualified operator<<: only works on temporaries (rvalues)
+		template <typename T>
+		LineLogger&& operator<<(const T& value)&& {
+			if (_active) {
+				_os << value;
+			}
+			return std::move(*this);
+		}
+
+		// Overload for manipulators (std::hex, std::endl, etc.)
+		LineLogger&& operator<<(std::ostream& (*func)(std::ostream&))&& {
+			if (_active) {
+				func(_os);
+			}
+			return std::move(*this);
+		}
+
+	private:
+		std::ostream& _os;
+		bool _active;
+	};
+
+	static LineLogger fatal() { return { std::cerr, _logLevel >= Level::FATAL }; }
+	static LineLogger error() { return { std::cerr, _logLevel >= Level::ERROR }; }
+	static LineLogger warn()  { return { std::cout, _logLevel >= Level::WARN  }; }
+	static LineLogger info()  { return { std::cout, _logLevel >= Level::INFO  }; }
+	static LineLogger trace() { return { std::cout, _logLevel >= Level::TRACE }; }
+
+	static void setLevel(Level level) { _logLevel = level; }
+
+private:
+	inline static Level _logLevel = Level::WARN;
 };
 
 }

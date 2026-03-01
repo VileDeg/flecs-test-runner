@@ -5,92 +5,65 @@
 
 #include <modules/test.h>
 
-
-#if 0
-// Define a Test Suite (Calculator) and a specific Test (AddPositive)
-TEST(Calculator, AddPositive) {
-	flecs::world ecs;
-
-
-	test_runner::initializeTests(ecs, [](flecs::world& world) {
-		world.import<modules::movement>();
-		});
-
-
-	const char* scriptActual = R"(
-        using modules.movement
-
-        TestEntity {
-            Position: {x: 10.0, y: 20.0}
-            Velocity: {x: 1.0, y: 2.0}
-        }
-    )";
-
-	const char* scriptExpected = R"(
-        using modules.movement
-
-        TestEntity {
-            Position: {x: 11.0, y: 22.0}
-            Velocity: {x: 1.0, y: 2.0}
-        }
-    )";
-
-
-	std::vector<test_runner::SystemInvocation> sys = {
-		{ "modules::movement::move", 1 }
-	};
-
-
-	test_runner::addTestEntity(
-		ecs, "TestEntity0",
-		sys,
-		scriptActual,
-		scriptExpected
-	);
-
-	std::cout << "Progress 0\n";
-	ecs.progress();
-
-	// Expect no tests to be run (got Executed tag)
-	std::cout << "Progress 1\n";
-	ecs.progress();
-
-
-
-	ASSERT_FALSE(false);
-
-	// TODO: check if test executed and passed
-}
-#endif
 using tr = TestRunner;
 using tri = TestRunnerImpl;
 
-using ut = tri::UnitTest;
+using UnitTest = tri::UnitTest;
 
-using Operator = ut::Operator;
+using Operator = UnitTest::Operator;
+using OpType = Operator::Type;
+
+
+using namespace movement;
+
+static const std::string TEST_MODULE_NAME = "movement.module";
 
 template <typename T>
-struct TypeInfo {
-	inline static const std::string COMP_NAME;
-};
+struct TypeInfo;
 
+//#define TYPE_INFO(_Comp, _Name) \
+//template <>\
+//struct TypeInfo<_Comp> {\
+//	inline static const std::string COMP_NAME = TEST_MODULE_NAME + "." + _Name;\
+//};
 #define TYPE_INFO(_Comp, _Name) \
 template <>\
 struct TypeInfo<_Comp> {\
-	static constexpr char COMP_NAME[] = _Name;\
+    static const std::string& get_name() {\
+        static const std::string name = TEST_MODULE_NAME + "." + _Name;\
+        return name;\
+    }\
 };
-TYPE_INFO(movement::Speed, "movement.module.Speed");
+TYPE_INFO(movement::Speed, "Speed");
+TYPE_INFO(movement::PositionVector, "PositionVector");
+TYPE_INFO(movement::PositionArray, "PositionArray");
 
+template <typename T>
+struct OpTestCase {
+	struct Components {
+		T a, b;
+	};
 
+	Operator::Type op;
+	Components components;
+	Operator::Path propertyPath;
+	bool expectedResult;
+	UnitTest::Systems systems = {};
+};
 
-// Define a test fixture class
 template <typename TestComponent>
-class TestFixture : public ::testing::Test {
+class ComparePropertyTest 
+	: public ::testing::Test, 
+		public ::testing::WithParamInterface<OpTestCase<TestComponent>> 
+{
+public:
+	using ComponentType = TestComponent;
+
 protected:
 	void SetUp() override {
-		tr::setLogLevel(tr::LogLevel::WARN);
+		tr::setLogLevel(tr::LogLevel::TRACE);
 
-		InitWorld(ecs);
+		InitWorld(_ecs);
 	}
 
 	void TearDown() override {
@@ -99,136 +72,272 @@ protected:
 
 	void InitWorld(flecs::world& ecs) {
 		TestRunner::initialize<movement::module>(ecs);
-		TestRunner::registerTypes<movement::Speed>(ecs);
+		// TODO: remove?
+		TestRunner::registerTypes<movement::Speed, movement::PositionVector>(ecs);
 	}
 
-	template <typename T = movement::Speed>
 	flecs::entity AddEntity(std::optional<std::string> name = std::nullopt) {
-		auto e = name ? ecs.entity(name->c_str()) : ecs.entity();
-		e.add<T>();
+		auto e = name ? _ecs.entity(name->c_str()) : _ecs.entity();
+		e.add<TestComponent>();
 		return e;
 	}
 
-	template <typename T = movement::Speed>
+	flecs::entity AddEntity(const TestComponent& comp, std::optional<std::string> name = std::nullopt) {
+		auto e = name ? _ecs.entity(name->c_str()) : _ecs.entity();
+		e.set<TestComponent>(comp);
+		return e;
+	}
+
 	flecs::entity AddEntity(flecs::world& world, std::optional<std::string> name = std::nullopt) {
 		auto e = name ? world.entity(name->c_str()) : world.entity();
-		e.add<T>();
+		e.add<TestComponent>();
 		return e;
 	}
+
+	using PropertyPair = std::pair<ResolvedProperty, ResolvedProperty>;
+
+	ResolvedProperty resolveProperty(const flecs::entity& entity, const std::string& propertyPath) {
+		return tri::resolveProperty(_ecs, entity, tri::getComponentByName(_ecs, COMP_NAME), propertyPath);
+	}
+
+	PropertyPair createProperties(
+		const TestComponent& compA, 
+		const TestComponent& compB, 
+		const std::string& propertyPath
+	) {
+		auto a = AddEntity(compA);
+		auto b = AddEntity(compB);
+
+		ResolvedProperty propA = resolveProperty(a, propertyPath);
+		ResolvedProperty propB = resolveProperty(b, propertyPath);
+
+		return { propA, propB };
+	}
+
+	PropertyPair createEqualProperties(const TestComponent& comp, const std::string& propertyPath) {
+		return createProperties(comp, comp, propertyPath);
+	}
+
+	PropertyPair createEqualProperties(const std::string& propertyPath) {
+		return createEqualProperties({}, propertyPath);
+	}
+
+	void checkCompareProperties(
+		const ComponentType& compA, 
+		const ComponentType& compB,
+		const Operator::Path& propertyPath, 
+		Operator::Type op,
+		bool comparisonResult = true
+	) {
+		auto [init, exp] = createProperties(compA, compB, propertyPath);
+
+		ASSERT_EQ(
+			tri::compareComponents(_ecs, init.type, init.ptr, exp.ptr, op),
+			comparisonResult
+		);
+	}
+
+	void runSystems(const tri::UnitTest::Systems& systems) {
+		tri::runSystems(_ecs, systems);
+	}
+
+	void runSystemsCheckCompareProperties(
+		const ComponentType& initial,
+		const ComponentType& expected,
+		const Operator::Path& propertyPath,
+		Operator::Type op,
+		const tri::UnitTest::Systems& systems,
+		bool comparisonResult = true
+	) {
+		auto a = AddEntity(initial);
+
+		runSystems(systems);
+
+		ResolvedProperty propInitial = resolveProperty(a, propertyPath);
+
+		auto b = AddEntity(expected);
+		ResolvedProperty propExpected = resolveProperty(b, propertyPath);
 		
-	inline static const std::string COMP_NAME			= TypeInfo<TestComponent>::COMP_NAME;
+		ASSERT_EQ(propInitial.type, propExpected.type);
+		ASSERT_EQ(
+			tri::compareComponents(_ecs, propInitial.type, propInitial.ptr, propExpected.ptr, op),
+			comparisonResult
+		);
+	}
+
+	inline static const std::string COMP_NAME			= TypeInfo<TestComponent>::get_name();
 	inline static const std::string COMP_NAME_SEP = COMP_NAME + tri::UnitTest::Operator::Path::DELIMETER;
 
-	flecs::world ecs;
+	flecs::world _ecs;
 };
 
 
-using TestFixture_Speed = TestFixture<movement::Speed>;
+using ComparePropertyTest_Speed = ComparePropertyTest<movement::Speed>;
+using ComparePropertyTest_PositionVector = ComparePropertyTest<movement::PositionVector>;
+using ComparePropertyTest_PositionArray = ComparePropertyTest<movement::PositionArray>;
 
-//TEST(Calculator, AddNegative) {
-//    // Use an EXPECT_ macro to check the result
-//    EXPECT_EQ(0, add(-5, 5));
-//}
+using PositionVectorTest = ComparePropertyTest<PositionVector>;
 
+using TestCaseVector = OpTestCase<PositionVector>;
 
-TEST_F(TestFixture_Speed, Basic) {
-	auto e = AddEntity();
+using PositionArrayTest = ComparePropertyTest<PositionArray>;
 
-	ResolvedProperty prop;
+TEST_P(PositionVectorTest, CompareProperties) {
+	const auto& param = GetParam();
 
-	EXPECT_NO_THROW(
-		prop = tri::resolveProperty(ecs, e, COMP_NAME_SEP);
-	);
-
-	ASSERT_TRUE(prop.ptr != nullptr);
-
-	ASSERT_TRUE(prop.funcs.eq != nullptr);
-	ASSERT_TRUE(prop.funcs.lt != nullptr);
-	ASSERT_TRUE(prop.funcs.gt != nullptr);
+	if (param.systems.empty()) {
+		checkCompareProperties(
+			param.components.a,
+			param.components.b,
+			param.propertyPath,
+			param.op,
+			param.expectedResult
+		);
+	} else {
+		runSystemsCheckCompareProperties(
+			param.components.a, 
+			param.components.b, 
+			param.propertyPath, 
+			param.op, 
+			param.systems,
+			param.expectedResult
+		);
+	}
 }
 
-TEST_F(TestFixture_Speed, EqualComponentSelf) {
-	auto e = AddEntity();
+static const Position pos11 = Position{ 1, 1 };
+static const Position pos22 = Position{ 2, 2 };
+static const Position pos4242 = Position{ 42, 42 };
 
-	ResolvedProperty prop = tri::resolveProperty(ecs, e, COMP_NAME_SEP);
+static const PositionVector posVector_11_4242 = { { pos11, pos4242 } };
+static const PositionVector posVector_22_4242 = { { pos22, pos4242 } };
 
-	ASSERT_TRUE(prop.funcs.eq(prop.ptr, prop.ptr));
+static const TestCaseVector::Components posVector_11_4242_Same		= { posVector_11_4242, posVector_11_4242 };
+static const TestCaseVector::Components posVector_11_4242_22_4242 = { posVector_11_4242, posVector_22_4242 };
+
+static const char* move_Speed_Vector = "moveVector_Speed";
+
+template <typename T>
+OpTestCase<T> MakeTestCase(
+	OpType op, 
+	const typename OpTestCase<T>::Components& comps,
+	std::string path, 
+	bool expected
+) {
+	return { op, comps, std::move(path), expected };
 }
 
-TEST_F(TestFixture_Speed, EqualComponentSame) {
-	auto a = AddEntity();
-	ResolvedProperty propA = tri::resolveProperty(ecs, a, COMP_NAME_SEP);
-
-	auto b = AddEntity();
-	ResolvedProperty propB = tri::resolveProperty(ecs, b, COMP_NAME_SEP);
-
-	// Must be same since come from the same metadata of component
-	ASSERT_EQ(propA.funcs, propB.funcs);
-
-	ASSERT_TRUE(propA.funcs.eq(propA.ptr, propB.ptr));
+template <typename T>
+auto GenerateEqualityTests(
+	const typename OpTestCase<T>::Components& comps,
+	const std::vector<std::string>& paths
+) {
+	std::vector<OpTestCase<T>> cases;
+	cases.reserve(paths.size());
+	for (const auto& path : paths) {
+		cases.push_back({ OpType::EQ, comps, path, true });   // Expected match
+		cases.push_back({ OpType::LT, comps, path, false });  // Expected fail for same values
+	}
+	return cases;
 }
 
-TEST_F(TestFixture_Speed, EqualWorlds) {
-	
-	
-	//auto setupWorld = [](flecs::world& ecs){
-	//	TestRunner::initialize<movement::module>(ecs);
-	//	TestRunner::registerTypes<movement::Speed>(ecs);
+template <typename T>
+auto GenerateCompareTests(
+	const typename OpTestCase<T>::Components& comps,
+	const std::vector<std::string>& paths,
+	OpType type,
+	bool result = true
+) {
+	std::vector<OpTestCase<T>> cases;
+	cases.reserve(paths.size());
+	for (const auto& path : paths) {
+		cases.push_back({ type, comps, path, result });
+		cases.push_back({ OpType::EQ, comps, path, false });
+	}
+	return cases;
+}
 
-	//	auto a = ecs.entity("Aboba");
-	//	a.add<movement::Speed>();
-	//	ResolvedProperty propA = tri::resolveProperty(ecs, a, COMP_NAME_SEP);
-	//};
+template <typename T>
+std::vector<OpTestCase<T>> MergeTests(std::vector<std::vector<OpTestCase<T>>>&& groups) {
+	std::vector<OpTestCase<T>> allCases;
+	for (auto& group : groups) {
+		allCases.insert(
+			allCases.end(),
+			std::make_move_iterator(group.begin()),
+			std::make_move_iterator(group.end())
+		);
+	}
+	return allCases;
+}
 
-	std::string name = "Aboba";
+const std::vector<std::string> testPaths = { "", "data", "data/0", "data/0/x" };
 
-	flecs::world initial, expected;
-	InitWorld(initial);
-	AddEntity(initial, name);
+INSTANTIATE_TEST_SUITE_P(
+	EqualityTests,
+	PositionVectorTest,
+	testing::ValuesIn(
+		GenerateEqualityTests<PositionVector>(posVector_11_4242_Same, testPaths)
+	)
+);
 
-	InitWorld(expected);
-	AddEntity(expected, name);
+INSTANTIATE_TEST_SUITE_P(
+	InequalityTests,
+	PositionVectorTest,
+	testing::ValuesIn(
+		MergeTests<PositionVector>({
+			GenerateCompareTests<PositionVector>(
+				posVector_11_4242_22_4242, 
+				testPaths, 
+				OpType::LT
+			),
+			GenerateCompareTests<PositionVector>(
+				posVector_11_4242_22_4242, 
+				testPaths, 
+				OpType::GT, 
+				false
+			)
+		})
+	)
+);
 
-	tri::UnitTest::Operators operators = {
-		{
-			"Aboba/" + COMP_NAME,
-			Operator::Type::EQ
+
+/*
+	Test:
+		EQ, LT for:
+			component (not nested)
+			array
+			vector
+			array / vector: 
+				primitive property under element which is a struct
+		EQ Exception:
+				component with no "on_equals" hook
+		LT Exception:
+				component with no "on_compare" hook
+
+		Other param variations through parameterized text fixture
+		Vector/array variations through typed test
+*/
+
+/* Serialized entity:
+{
+	"name": "Initial",
+	"components": {
+	"movement.module.Speed": {
+			"value": 1.0
+		},
+		"movement.module.PositionVector": {
+			"data": [
+				{
+					"x": 1,
+					"y": 1
+				},
+				{
+					"x": 42,
+					"y": 42
+				}
+			]
 		}
-	};
-
-	ASSERT_TRUE(
-		tri::compareWorlds(initial, expected, operators)
-	);
+	}
 }
 
-#if 0
-TEST_F(TestFixture_Speed, EqualWorlds1) {
-	using Operator = tri::UnitTest::Operator;
-
-	auto setupWorld = [](flecs::world& ecs) {
-		TestRunner::initialize<movement::module>(ecs);
-		TestRunner::registerTypes<movement::Speed>(ecs);
-
-		auto a = ecs.entity("Aboba");
-		a.add<movement::Speed>();
-		ResolvedProperty propA = tri::resolveProperty(ecs, a, COMP_NAME_SEP);
-		};
-
-	flecs::world initial, expected;
-	setupWorld(initial);
-	setupWorld(expected);
-
-	tri::UnitTest::Operators operators = {
-		{
-			"Aboba/movement.module.Speed",
-			Operator::Type::EQ
-		}
-	};
-
-	ASSERT_TRUE(
-		tri::compareWorlds(initial, expected, operators)
-	);
-}
-#endif
-
-
+*/

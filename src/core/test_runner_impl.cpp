@@ -9,8 +9,10 @@
 #include <stdexcept>
 #include <algorithm>
 
+#include <charconv>
+#include <system_error>
 
-#include <string>
+
 #include <iostream>
 #include <algorithm>
 #include <sstream>
@@ -18,7 +20,7 @@
 #include "test_runner_impl.h"
 
 #include <test_runner/test_runner.h>
-#include "common.h"
+#include <test_runner/common.h>
 
 using namespace TestRunnerDetail;
 
@@ -144,7 +146,7 @@ using Operators = TestRunnerImpl::UnitTest::Operators;
 // ================================================================================================
 
 // ================================================================================================
-std::vector<std::string> TestRunnerImpl::UnitTest::getSystemNames() {
+std::vector<std::string> TestRunnerImpl::UnitTest::getSystemNames() const {
 	std::vector<std::string> names;
 	names.reserve(systems.size());
 
@@ -164,38 +166,34 @@ void TestRunnerImpl::UnitTest::normalizeSystemNames()
 {
 	for (auto& sys : systems) {
 		// Normalize system name: replace "." with "::" to handle both notations
-		size_t pos = 0;
-		if ((pos = sys.name.find(".", pos)) == std::string::npos) {
-			continue;
-		}
-
 		std::string normalizedName = sys.name;
-		do {
+		size_t pos = 0;
+		while ((pos = sys.name.find(".", pos)) == std::string::npos) {
 			normalizedName.replace(pos, 1, "::");
 			pos += 2; // Move past the replacement
-		} while ((pos = normalizedName.find(".", pos)) != std::string::npos);
+		}
 		sys.name = normalizedName;
 	}
 }
 
 // ================================================================================================
-void TestRunnerImpl::UnitTest::runSystems(flecs::world& world)
-{
-	for (auto& sys : systems) {
-		// Run system
-		for (int i = 0; i < sys.timesToRun; ++i) {
-			auto system = getSystemByName(world, sys.name);
-			if (!system.has_value()) {
-				std::stringstream ss;
-				ss << "System " << sys.name << " not found";
-				throw Error(ss.str());
-			}
-
-			Log::info() << "[" << i << "] Running system '" << sys.name << "'\n";
-			system->run();
-		}
-	}
-}
+//void TestRunnerImpl::UnitTest::runSystems(flecs::world& world) const
+//{
+//	for (auto& sys : systems) {
+//		// Run system
+//		for (int i = 0; i < sys.timesToRun; ++i) {
+//			auto system = getSystemByName(world, sys.name);
+//			if (!system.has_value()) {
+//				std::stringstream ss;
+//				ss << "System " << sys.name << " not found";
+//				throw Error(ss.str());
+//			}
+//
+//			Log::info() << "[" << i << "] Running system '" << sys.name << "'\n";
+//			system->run();
+//		}
+//	}
+//}
 
 
 
@@ -210,14 +208,17 @@ void TestRunnerImpl::applyConfiguration(
 
 // ================================================================================================
 void TestRunnerImpl::runWorld(
-	flecs::world& world, World type, TestRunnerImpl::UnitTest& test, const ModuleImporter& importer
+	flecs::world& world, 
+	World type, 
+	const TestRunnerImpl::UnitTest& test, 
+	const ModuleImporter& importer
 ) {
 	importer.importAll(world);
 
 	if (type == World::Actual) {
 		applyConfiguration(world, test.initialConfiguration);
 		//world.script_run("ScriptActual", test.scriptActual.c_str());
-		test.runSystems(world);
+		runSystems(world, test.systems);
 	} else {
 		applyConfiguration(world, test.expectedConfiguration);
 		//world.script_run("ScriptExpected", test.scriptExpected.c_str());
@@ -225,17 +226,8 @@ void TestRunnerImpl::runWorld(
 }
 
 // ================================================================================================
-void TestRunnerImpl::runUnitTest(flecs::entity e, UnitTest& test)
+bool TestRunnerImpl::runUnitTest(UnitTest& test)
 {
-	Log::info() << "Running test: " << test.name << "\n";
-
-	auto status = test.validate();
-	if (status.has_value()) {
-		std::stringstream ss;
-		ss << "Failed to run test " << test.name << ": " << *status << "\n";
-		e.set<UnitTest::Executed>({ *status });
-		throw Error(ss.str());
-	}
 	test.normalizeSystemNames();
 
 	flecs::world worldActual, worldExpected;
@@ -244,29 +236,13 @@ void TestRunnerImpl::runUnitTest(flecs::entity e, UnitTest& test)
 	importer.resolveModules(test.getSystemNames());
 	runWorld(worldActual, World::Actual, test, importer);
 	runWorld(worldExpected, World::Expected, test, importer);
-
-	std::string statusMessage;
-	if (compareWorlds(worldActual, worldExpected, test.operators)) {
-		e.add<UnitTest::Passed>();
-		statusMessage = "OK";
-	} else {
-		statusMessage = "Worlds do not match. Actual vs. expected";
-	}
-	e.set<UnitTest::Executed>({ statusMessage });
+	
+	return compareWorlds(worldActual, worldExpected, test.operators);
 }
 
 // ================================================================================================
-void TestRunnerImpl::runUnitTestIncomplete(flecs::entity e, UnitTest& test)
+std::string TestRunnerImpl::runUnitTestIncomplete(UnitTest& test)
 {
-	Log::info() << "Running test (Incomplete): " << test.name << "\n";
-
-	auto status = test.validate(false);
-	if (status.has_value()) {
-		std::stringstream ss;
-		ss << "Failed to run test " << test.name << ": " << *status << "\n";
-		e.set<UnitTest::Executed>({ *status });
-		return;
-	}
 	test.normalizeSystemNames();
 
 	flecs::world worldActual;
@@ -275,9 +251,7 @@ void TestRunnerImpl::runUnitTestIncomplete(flecs::entity e, UnitTest& test)
 	importer.resolveModules(test.getSystemNames());
 	runWorld(worldActual, World::Actual, test, importer);
 
-	std::string worldExpectedSerialized = worldActual.to_json();
-	e.set<UnitTest::Executed>({ "OK" });
-	e.set<UnitTest::Incomplete>({ worldExpectedSerialized });
+	return worldActual.to_json();
 }
 
 
@@ -289,13 +263,13 @@ std::optional<flecs::system> TestRunnerImpl::getSystemByName(
 	flecs::entity systemEntity = world.lookup(systemName.c_str());
 
 	if (!systemEntity) {
-		Log::error() << "ERROR: System '" << systemName << "' not found!\n";
+		Log::error() << "System '" << systemName << "' not found!\n";
 		return std::nullopt;
 	}
 
 	// Check if it's a system
 	if (!systemEntity.has(flecs::System) || !world.system(systemEntity)) {
-		Log::error() << "ERROR: Entity '" << systemName << "' is not a system!\n";
+		Log::error() << "Entity '" << systemName << "' is not a system!\n";
 		return std::nullopt;
 	}
 
@@ -336,11 +310,9 @@ static bool isAnySegment(const Operator::Path& path, const char delim = Operator
 */
 
 
-ResolvedProperty TestRunnerImpl::resolveProperty(
+ResolvedPropertyMetadata TestRunnerImpl::resolvePropertyMetadata(
 	flecs::world& ecs, flecs::entity e, Operator::Path path
 ) {
-
-
 	//std::stringstream ss(path);
 	std::string segment;
 
@@ -388,7 +360,94 @@ ResolvedProperty TestRunnerImpl::resolveProperty(
 	};
 }
 
-static bool compareComponents(
+int getPositiveInteger(const std::string& s) {
+	if (s.empty()) {
+		throw std::invalid_argument("Empty string");
+	}
+
+	// Check for negative sign immediately
+	if (s[0] == '-') {
+		throw std::domain_error("Negative numbers not allowed");
+	}
+
+	int value;
+	auto [ptr, ec] = std::from_chars(s.data(), s.data() + s.size(), value);
+
+	if (ec == std::errc::invalid_argument) {
+		return -1;
+		//throw std::invalid_argument("Not a valid integer");
+	} else if (ec == std::errc::result_out_of_range) {
+		throw std::out_of_range("Integer overflow");
+	} else if (ptr != s.data() + s.size()) {
+		throw std::invalid_argument("Trailing non-numeric characters found");
+	}
+	return value;
+}
+
+ResolvedProperty TestRunnerImpl::resolveProperty(
+	flecs::world& ecs, 
+	flecs::entity entity, 
+	UnitTest::Operator::Path path
+) {
+	std::string initialPath = path;
+	// First segment (The Component)
+	std::string segment = path.popSegment();
+	flecs::entity component = getComponentByName(ecs, segment);
+	return resolveProperty(ecs, entity, component, path);
+}
+
+ResolvedProperty TestRunnerImpl::resolveProperty(
+	flecs::world& ecs, 
+	flecs::entity entity, 
+	flecs::entity component, 
+	UnitTest::Operator::Path propertyPath
+) {
+	std::string unmodifiedPath = propertyPath;
+	
+	void* basePtr = entity.get_mut(component);
+	if (!basePtr) {
+		std::stringstream ss;
+		ss << "Component \"" << component.name() << "\" does not exist on entity \"" << entity.name() << "\"";
+		throw Error(ss.str());
+	}
+
+	flecs::cursor cur(ecs, component, basePtr);
+
+	std::string segment;
+	while (propertyPath.isAnySegment()) {
+		segment = propertyPath.popSegment();
+
+		if (cur.push()) {
+			throw Error("Failed to push into cursor scope");
+		}
+
+		int index = getPositiveInteger(segment);
+		if (index > -1) {
+			if (!cur.is_collection()) {
+				throw Error("Invalid address, is not a collection");
+			}
+			// Move to index
+			if (cur.elem(index) < 0) {
+				throw Error("Cursor element failed");
+			}
+		} else {
+			if (cur.member(segment.c_str())) {
+				throw Error("Cursor member failed");
+			}
+		}
+	}
+
+	flecs::entity type_ent = cur.get_type();
+
+	Log::trace() << "Resolved path \"" << unmodifiedPath << "\" to property \"" << type_ent.name() << "\"";
+
+	return {
+		type_ent,
+		cur.get_ptr(),
+	};
+}
+
+bool TestRunnerImpl::compareComponents(
 	ecs_world_t* world, 
 	ecs_entity_t component_id, 
 	const void* lhs, 
@@ -529,7 +588,7 @@ static bool compareEntities(flecs::entity initial, flecs::entity expected, Opera
 	}
 }
 
-static bool compareProperties(ResolvedProperty initial, ResolvedProperty expected, Operator::Type operatorType) {
+static bool compareProperties(ResolvedPropertyMetadata initial, ResolvedPropertyMetadata expected, Operator::Type operatorType) {
 	// Must be same since they come from the same component entity
 	assert(initial.funcs == expected.funcs);
 	auto funcs = initial.funcs;
@@ -587,8 +646,8 @@ bool TestRunnerImpl::compareWorlds(
 			}
 		}
 
-		auto propertyIntial = resolveProperty(initial, initialEntity, oper.path);
-		auto propertyExpected = resolveProperty(expected, expectedEntity, oper.path);
+		auto propertyIntial = resolvePropertyMetadata(initial, initialEntity, oper.path);
+		auto propertyExpected = resolvePropertyMetadata(expected, expectedEntity, oper.path);
 
 		/*/
 		if (!compareProperties(propertyIntial, propertyExpected, oper.type)) {
@@ -613,3 +672,25 @@ bool TestRunnerImpl::compareWorlds(
 	return !comparisonFailed;
 }
 
+void TestRunnerImpl::runSystems(const flecs::world& world, const UnitTest::Systems& systems)
+{
+	for (auto& sys : systems) {
+		if (sys.name.empty()) {
+			Log::warn() << "System name is empty";
+			continue;
+		}
+
+		auto system = getSystemByName(world, sys.name);
+		if (!system.has_value()) {
+			std::stringstream ss;
+			ss << "System " << sys.name << " not found";
+			throw Error(ss.str());
+		}
+
+		// Run system
+		for (int i = 0; i < sys.timesToRun; ++i) {
+			Log::info() << "[" << i << "] Running system '" << sys.name << "'\n";
+			system->run();
+		}
+	}
+}

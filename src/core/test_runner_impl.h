@@ -14,127 +14,19 @@
 #include <algorithm>
 #include <sstream>
 
-#include "common.h"
+#include <test_runner/common.h>
 
 using namespace TestRunnerDetail;
 
-
-class Log {
-public:
-	using Level = TestRunnerDetail::LogLevel;
-
-	static std::ostream& fatal() { return _logLevel >= Level::FATAL ? std::cerr : _nullStream; }
-	static std::ostream& error() { return _logLevel >= Level::ERROR ? std::cerr : _nullStream; }
-	static std::ostream& warn()  { return _logLevel >= Level::WARN  ? std::cout : _nullStream; }
-	static std::ostream& info()  { return _logLevel >= Level::INFO  ? std::cout : _nullStream; }
-	static std::ostream& trace() { return _logLevel >= Level::TRACE ? std::cout : _nullStream; }
-
-	static void setLevel(Level level) {
-		_logLevel = level;
-	}
-
-private:
-	class NullBuffer : public std::streambuf {
-	protected:
-		int overflow(int c) override { return c; }
-	};
-
-	class NullStream : public std::ostream {
-	public:
-		NullStream() : std::ostream(&nullBuffer) {}
-	private:
-		NullBuffer nullBuffer;
-	};
-
-	inline static Level _logLevel = Level::WARN;
-	inline static NullStream _nullStream;
-};
-
-
-template<typename T>
-using comparison_operand_t = const std::remove_reference_t<T>&;
-
-// Generic Macro-like Trait Structure to avoid repetition
-#define DEFINE_COMPARISON_TRAIT(name, op) \
-template<typename T, typename = void> \
-struct name : std::false_type {}; \
-\
-template<typename T> \
-struct name<T, std::void_t<decltype(std::declval<comparison_operand_t<T>>() op std::declval<comparison_operand_t<T>>())>> \
-    : std::bool_constant<std::is_convertible_v< \
-        decltype(std::declval<comparison_operand_t<T>>() op std::declval<comparison_operand_t<T>>()), \
-        bool>> {}; \
-\
-template<typename T> \
-inline constexpr bool name##_v = name<T>::value;
-
-// Equal (==)
-template<typename T, typename = void>
-struct has_eq : std::false_type {};
-
-template<typename T>
-struct has_eq<T, std::void_t<decltype(std::declval<T>() == std::declval<T>())>> : std::true_type {};
-
-// Not Equal (!==)
-template<typename T, typename = void>
-struct has_neq : std::false_type {};
-
-template<typename T>
-struct has_neq<T, std::void_t<decltype(std::declval<T>() != std::declval<T>())>> : std::true_type {};
-
-// Less Than (<)
-template<typename T, typename = void>
-struct has_lt : std::false_type {};
-
-template<typename T>
-struct has_lt<T, std::void_t<decltype(std::declval<T>() < std::declval<T>())>> : std::true_type {};
-
-// Greater Than (>)
-template<typename T, typename = void>
-struct has_gt : std::false_type {};
-
-template<typename T>
-struct has_gt<T, std::void_t<decltype(std::declval<T>() > std::declval<T>())>> : std::true_type {
-};
-
-// Less Than or Equal (<=)
-template<typename T, typename = void>
-struct has_lte : std::false_type {};
-
-template<typename T>
-struct has_lte<T, std::void_t<decltype(std::declval<T>() <= std::declval<T>())>> : std::true_type {};
-
-// Greater Than or Equal (>=)
-template<typename T, typename = void>
-struct has_gte : std::false_type {};
-
-template<typename T>
-struct has_gte<T, std::void_t<decltype(std::declval<T>() >= std::declval<T>())>> : std::true_type {};
-
-// Helper variable templates
-template<typename T>
-inline static constexpr bool has_eq_v = has_eq<T>::value;
-
-template<typename T>
-inline static constexpr bool has_neq_v = has_neq<T>::value;
-
-template<typename T>
-inline static constexpr bool has_lt_v = has_lt<T>::value;
-
-template<typename T>
-inline static constexpr bool has_gt_v = has_gt<T>::value;
-
-template<typename T>
-inline static constexpr bool has_lte_v = has_lte<T>::value;
-
-template<typename T>
-inline static constexpr bool has_gte_v = has_gte<T>::value;
-
-
-struct ResolvedProperty {
+struct ResolvedPropertyMetadata {
 	flecs::entity type; // TODO: unused?
 	void* ptr = nullptr; // Actual memory address of the property
 	TypeMetadata::ComparisonFuncs funcs;
+};
+
+struct ResolvedProperty {
+	flecs::entity type; 
+	void* ptr = nullptr; // Actual memory address of the property
 };
 
 
@@ -158,6 +50,8 @@ public:
 
 	// ================================================================================================
 	struct UnitTest {
+		using Systems = std::vector<SystemInvocation>;
+
 		struct Error : public AutoPrefixedError<Error> {
 			using AutoPrefixedError::AutoPrefixedError;
 		};
@@ -195,7 +89,7 @@ public:
 				{
 				}
 
-				operator std::string() {
+				operator std::string() const {
 					return path;
 				}
 
@@ -208,16 +102,19 @@ public:
 				}
 
 				std::string popSegment() {
-					std::stringstream ss(path);
+					if (path.empty()) return "";
+
+					std::istringstream ss(path);
 					std::string segment;
 
+					// 1. Extract the first segment
 					if (std::getline(ss, segment, DELIMETER)) {
-						// Extract the remainder of the stream into the original path
+						// 2. Extract everything else left in the stream
 						std::string remainder;
-						if (std::getline(ss, remainder, '\0')) {
+						if (std::getline(ss, remainder)) { // No delimiter needed for remainder
 							path = remainder;
 						} else {
-							path = ""; // No more segments remain
+							path = ""; // This was the last segment
 						}
 					}
 
@@ -225,7 +122,8 @@ public:
 				}
 
 				bool isAnySegment() {
-					return path.find(DELIMETER) != std::string::npos;
+					//return path.find(DELIMETER) != std::string::npos;
+					return !path.empty();
 				}
 
 
@@ -246,7 +144,7 @@ public:
 
 		std::string name; // TODO: use some ID (hash) instead of name?
 
-		std::vector<SystemInvocation> systems;
+		Systems systems;
 
 		// vector of serialized entities
 		using WorldConfiguration = std::vector<std::string>;
@@ -274,9 +172,9 @@ public:
 		}
 
 		void normalizeSystemNames();
-		void runSystems(flecs::world& world);
+		//void runSystems(flecs::world& world) const;
 
-		std::vector<std::string> getSystemNames();
+		std::vector<std::string> getSystemNames() const;
 	};
 
 	
@@ -298,9 +196,46 @@ public:
 	using ModulesMap =
 		std::map<std::string, WorldCallback>;
 
+	static flecs::entity getComponentByName(flecs::world& ecs, const std::string& name) {
+		flecs::entity component = ecs.lookup(name.c_str(), ".", "."); // "/", "/"
+		if (!component) {
+			std::stringstream ss;
+			ss << "Component \"" << name << "\" does not exist";
+			throw Error(ss.str());
+		}
+		return component;
+	}
+
 	// ================================================================================================
-	static ResolvedProperty resolveProperty(
+	static ResolvedPropertyMetadata resolvePropertyMetadata(
 		flecs::world& ecs, flecs::entity e, UnitTest::Operator::Path path
+	);
+
+	// ================================================================================================
+	/**
+	* Expect path to include component name (first segment).
+	* TODO
+	*/
+	static ResolvedProperty resolveProperty(
+		flecs::world& ecs, flecs::entity entity, UnitTest::Operator::Path path
+	);
+
+	// ================================================================================================
+	/**
+	* TODO
+	* @param propertyPath Path of a property inside a component definiton.
+	*/
+	static ResolvedProperty resolveProperty(
+		flecs::world& ecs, flecs::entity entity, flecs::entity component, UnitTest::Operator::Path propertyPath
+	);
+
+	//  ================================================================================================
+	static bool compareComponents(
+		ecs_world_t* world,
+		ecs_entity_t component_id,
+		const void* lhs,
+		const void* rhs,
+		UnitTest::Operator::Type operatorType
 	);
 
 	// ================================================================================================
@@ -310,13 +245,21 @@ public:
 		flecs::world& initial, flecs::world& expected, UnitTest::Operators operators
 	);
 	// ================================================================================================
+	static void runSystems(const flecs::world& world, const UnitTest::Systems& systems);
+	// ================================================================================================
 	static void runWorld(
-		flecs::world& world, World type, UnitTest& test, const ModuleImporter& importer
+		flecs::world& world, 
+		World type, 
+		const UnitTest& test, 
+		const ModuleImporter& importer
 	);
 	// ================================================================================================
-	static void runUnitTest(flecs::entity e, UnitTest& test);
+	static bool runUnitTest(UnitTest& test);
 	// ================================================================================================
-	static void runUnitTestIncomplete(flecs::entity e, UnitTest& test);
+	/**
+	* Returns serialized world 
+	*/
+	static std::string runUnitTestIncomplete(UnitTest& test);
 	// ================================================================================================
 	static void applyConfiguration(
 		flecs::world& world, UnitTest::WorldConfiguration configuration

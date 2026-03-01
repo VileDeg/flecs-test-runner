@@ -9,7 +9,7 @@
 #include <sstream>
 
 #include "reflection.h"
-#include "common.h"
+#include <test_runner/common.h>
 
 //using Log = TestRunner::Log;
 
@@ -99,7 +99,24 @@ TestRunner::TestRunner(flecs::world& world) {
     .without<UnitTest::Incomplete>()
     .each([this](flecs::entity e, UnitTest& test) {
       try {
-				TestRunnerImpl::runUnitTest(e, test);
+				Log::info() << "Running test: " << test.name << "\n";
+
+				auto status = test.validate();
+				if (status.has_value()) {
+					std::stringstream ss;
+					ss << "Failed to run test " << test.name << ": " << *status << "\n";
+					e.set<UnitTest::Executed>({ *status });
+					throw Error(ss.str());
+				}
+
+				std::string statusMessage;
+				if (TestRunnerImpl::runUnitTest(test)) {
+					e.add<UnitTest::Passed>();
+					statusMessage = "OK";
+				} else {
+					statusMessage = "Worlds do not match. Actual vs. expected";
+				}
+				e.set<UnitTest::Executed>({ statusMessage });
       }
       catch (const std::runtime_error& e) {
         Log::error() << "Error [" << __FUNCTION__ << "]: " << e.what() << "\n";
@@ -114,7 +131,20 @@ TestRunner::TestRunner(flecs::world& world) {
     .with<UnitTest::Incomplete>()
     .each([this](flecs::entity e, UnitTest& test) {
       try {
-				TestRunnerImpl::runUnitTestIncomplete(e, test);
+				Log::info() << "Running test (Incomplete): " << test.name << "\n";
+
+				auto status = test.validate(false);
+				if (status.has_value()) {
+					std::stringstream ss;
+					ss << "Failed to run test " << test.name << ": " << *status << "\n";
+					e.set<UnitTest::Executed>({ *status });
+					throw Error(ss.str());
+				}
+
+				std::string expectedSerialized = TestRunnerImpl::runUnitTestIncomplete(test);
+
+				e.set<UnitTest::Executed>({ "OK" });
+				e.set<UnitTest::Incomplete>({ expectedSerialized });
       }
       catch (const std::runtime_error& e) {
         Log::error() << "Error [" << __FUNCTION__ << "]: " << e.what() << "\n";

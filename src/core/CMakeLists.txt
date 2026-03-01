@@ -6,8 +6,8 @@ set(SRC_FILES
     test_runner_impl.h
     test_runner_impl.cpp
     reflection.h
-    common.h
     include/test_runner/test_runner.h
+    include/test_runner/common.h
 )
 
 # Create a static library
