@@ -8,6 +8,7 @@
 #include <map>
 #include <stdexcept>
 #include <algorithm>
+#include <unordered_set>
 
 #include <string>
 #include <iostream>
@@ -78,19 +79,59 @@ public:
 				GTE,
 			};
 
-			struct Path {
+			static std::string typeToString(Type type) {
+				if (type == Type::EQ) {
+					return "Equal";
+				}
+				if (type == Type::NEQ) {
+					return "Not Equal";
+				}
+				if (type == Type::LT) {
+					return "Less Than";
+				}
+				if (type == Type::LTE) {
+					return "Less Than Equal";
+				}
+				if (type == Type::GT) {
+					return "Greater Than";
+				}
+				if (type == Type::GTE) {
+					return "Greater Than Equal";
+				}
+				return "<INVALID>";
+			}
 
+			struct Path {
+				Path()
+					: path("") {
+				}
 				Path(const std::string& pathStr) 
-					: path(pathStr)
-				{
+					: path(pathStr) {
 				}
 				Path(const char* pathStr)
-					: path(pathStr)
-				{
+					: path(pathStr) {
 				}
 
 				operator std::string() const {
 					return path;
+				}
+
+				friend bool operator==(const Path& lhs, const Path& rhs) {
+					return lhs.path == rhs.path;
+				}
+
+				friend Path operator+(const Path& lhs, const Path& rhs) {
+					return lhs.path + DELIMETER + rhs.path;
+				}
+
+				friend Path& operator+=(Path& lhs, const Path& rhs) {
+					lhs = lhs + rhs;
+					return lhs;
+				}
+
+				friend std::ostream& operator<<(std::ostream& os, const Path& rhs) {
+					os << rhs.path;
+					return os;
 				}
 
 				std::string getTopSegment() {
@@ -107,22 +148,25 @@ public:
 					std::istringstream ss(path);
 					std::string segment;
 
-					// 1. Extract the first segment
-					if (std::getline(ss, segment, DELIMETER)) {
-						// 2. Extract everything else left in the stream
-						std::string remainder;
-						if (std::getline(ss, remainder)) { // No delimiter needed for remainder
-							path = remainder;
-						} else {
-							path = ""; // This was the last segment
-						}
+					// Extract and skip repeated delimeter e.g. "//"
+					bool good = false;
+					do {
+						auto& res = std::getline(ss, segment, DELIMETER);
+						good = static_cast<bool>(res);
+					} while (good && segment.empty());
+
+					// Extract everything else left in the stream
+					std::string remainder;
+					if (std::getline(ss, remainder)) { // No delimiter needed for remainder
+						path = remainder;
+					} else {
+						path = ""; // This was the last segment
 					}
 
 					return segment;
 				}
 
 				bool isAnySegment() {
-					//return path.find(DELIMETER) != std::string::npos;
 					return !path.empty();
 				}
 
@@ -132,14 +176,22 @@ public:
 				std::string path;
 			};
 
-			//using Path = std::string;
+			friend bool operator==(const Operator& lhs, const Operator& rhs) {
+				return lhs.path == rhs.path;
+			}
 
-			
+			friend std::ostream& operator<<(std::ostream& os, const Operator& rhs) {
+				os << "[path, type]: " 
+					<< rhs.path << ", " 
+					<< Operator::typeToString(rhs.type);
+				return os;
+			}
 
 			Path path;
 			Type type;
 		};
 
+		// TODO: use unordered_set
 		using Operators = std::vector<Operator>;
 
 		std::string name; // TODO: use some ID (hash) instead of name?
@@ -164,9 +216,9 @@ public:
 			} else if (systems.empty()) {
 				statusMessage = "No systems to run";
 			} else if (initialConfiguration.empty()) {
-				statusMessage = "Actual script is empty";
+				statusMessage = "Initial configuration is empty";
 			} else if (complete && expectedConfiguration.empty()) {
-				statusMessage = "Expected script is empty";
+				statusMessage = "Expected configuration is empty";
 			}
 			return statusMessage;
 		}
@@ -177,7 +229,8 @@ public:
 		std::vector<std::string> getSystemNames() const;
 	};
 
-	
+	// ================================================================================================
+	using WorldComparisonResult = std::unordered_map<UnitTest::Operator, bool>;
 
 	
 	// ================================================================================================
@@ -206,6 +259,8 @@ public:
 		return component;
 	}
 
+	static std::vector<std::string> resolveModules(const std::vector<std::string>& systemsFullPath);
+
 	// ================================================================================================
 	static ResolvedPropertyMetadata resolvePropertyMetadata(
 		flecs::world& ecs, flecs::entity e, UnitTest::Operator::Path path
@@ -232,18 +287,38 @@ public:
 	//  ================================================================================================
 	static bool compareComponents(
 		ecs_world_t* world,
-		ecs_entity_t component_id,
+		ecs_entity_t componentId,
+		const void* lhs,
+		const void* rhs,
+		UnitTest::Operator::Type operatorType,
+		std::ostream& os
+	);
+	static bool compareComponents(
+		ecs_world_t* world,
+		ecs_entity_t componentId,
 		const void* lhs,
 		const void* rhs,
 		UnitTest::Operator::Type operatorType
-	);
+	) {
+		return compareComponents(world, componentId, lhs, rhs, operatorType, Log::trace());
+	}
 
 	// ================================================================================================
 	static bool compareWorldsComplete(flecs::world& world1, flecs::world& world2);
 	// ================================================================================================
 	static bool compareWorlds(
-		flecs::world& initial, flecs::world& expected, UnitTest::Operators operators
+		flecs::world& initial, 
+		flecs::world& expected, 
+		UnitTest::Operators operators,
+		std::ostream& os
 	);
+	static bool compareWorlds(
+		flecs::world& initial,
+		flecs::world& expected,
+		UnitTest::Operators operators
+	) {
+		return compareWorlds(initial, expected, operators, Log::trace());
+	}
 	// ================================================================================================
 	static void runSystems(const flecs::world& world, const UnitTest::Systems& systems);
 	// ================================================================================================
@@ -254,7 +329,11 @@ public:
 		const ModuleImporter& importer
 	);
 	// ================================================================================================
-	static bool runUnitTest(UnitTest& test);
+	static bool runUnitTest(UnitTest& test, std::ostringstream& out);
+	static bool runUnitTest(UnitTest& test) {
+		std::ostringstream dummy;
+		return runUnitTest(test, dummy);
+	}
 	// ================================================================================================
 	/**
 	* Returns serialized world 

@@ -273,11 +273,12 @@ public:
 	public:
 		LineLogger(std::ostream& os, bool active) : _os(os), _active(active) {}
 
-		// Prevent copying and moving to ensure it stays a temporary
+		// Prevent copying to ensure it stays a temporary
 		LineLogger(const LineLogger&) = delete;
 		LineLogger& operator=(const LineLogger&) = delete;
-		LineLogger(LineLogger&&) = delete;
-		LineLogger& operator=(LineLogger&&) = delete;
+
+		LineLogger(LineLogger&&) = default;
+		LineLogger& operator=(LineLogger&&) = default;
 
 		// Finalize the line when the temporary object is destroyed
 		~LineLogger() {
@@ -295,13 +296,19 @@ public:
 			return std::move(*this);
 		}
 
+		operator std::ostream&()&& {
+			return _os;
+		}
+
 		// Overload for manipulators (std::hex, std::endl, etc.)
+		/*
 		LineLogger&& operator<<(std::ostream& (*func)(std::ostream&))&& {
 			if (_active) {
 				func(_os);
 			}
 			return std::move(*this);
 		}
+		*/
 
 	private:
 		std::ostream& _os;

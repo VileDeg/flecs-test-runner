@@ -33,6 +33,7 @@ class ModuleImporter {
 public:
 	using ModulesMap =
 		std::map<std::string, WorldCallback>;
+	using ModulesNames = std::vector<std::string>;
 
 	template <typename Derived>
 	using AutoPrefixedError = AutoPrefixedError<Derived>;
@@ -50,11 +51,17 @@ public:
 	{
 	}
 
+	void setUsedModules(const ModulesNames& modules) {
+		_usedModules = modules;
+	}
+
+	/*
 	void resolveModules(std::vector<std::string> systems)
 	{
 		bool anyModuleFound = false;
 		for (auto& sys : systems) {
-			auto m = matchModuleFromSystemPath(sys, _moduleRegistry);
+
+			//auto m = matchModuleFromSystem(sys, _moduleRegistry);
 			if (m.has_value()) {
 				anyModuleFound = true;
 				_usedModules.push_back(*m);
@@ -64,6 +71,7 @@ public:
 			throw ImportError("None of the systems belong to any module");
 		}
 	}
+	*/
 
 	void importAll(flecs::world& world) const
 	{
@@ -83,45 +91,49 @@ public:
 	}
 
 private:
-	std::optional<std::string> matchModuleFromSystemPath(
-		std::string systemFullPath, const ModulesMap& registry
-	);
+	//std::optional<std::string> matchModuleFromSystem(
+	//	std::string systemFullPath, const ModulesMap& registry
+	//);
 
 	const ModulesMap& _moduleRegistry;
 	const TypeRegistry& _typeRegistry;
 	// TODO: used types
 
-	std::vector<std::string> _usedModules;
+	ModulesNames _usedModules;
 };
 
-std::optional<std::string> ModuleImporter::matchModuleFromSystemPath(
-	std::string systemFullPath, const ModuleImporter::ModulesMap& registry
+/*
+std::optional<std::string> ModuleImporter::matchModuleFromSystem(
+	const flecs::entity& system, const ModuleImporter::ModulesMap& registry
 ) {
-	std::string current_path = systemFullPath;
+	system.par
+
+	//std::string current_path = systemFullPath;
 
 	// Iteratively strip the last "::Section" until we find a match
-	while (true) {
-		size_t pos = current_path.rfind("::");
-		if (pos == std::string::npos) {
-			break; // No more scopes to strip
-		}
+	//while (true) {
+	//	size_t pos = current_path.rfind("::");
+	//	if (pos == std::string::npos) {
+	//		break; // No more scopes to strip
+	//	}
 
-		// Cut off the last part to get the potential module name
-		current_path = current_path.substr(0, pos);
+	//	// Cut off the last part to get the potential module name
+	//	current_path = current_path.substr(0, pos);
 
-		// Check if this substring matches a registered module
-		if (registry.count(current_path)) {
-			Log::info() << "[Info] System '" << systemFullPath
-				<< "' belongs to module '" << current_path << "\n";
-			//_moduleRegistry[current_path](world);
-			return current_path;
-		}
-	}
+	//	// Check if this substring matches a registered module
+	//	if (registry.count(current_path)) {
+	//		Log::info() << "System '" << systemFullPath
+	//			<< "' belongs to module '" << current_path << "\n";
+	//		//_moduleRegistry[current_path](world);
+	//		return current_path;
+	//	}
+	//}
 
-	Log::warn() << "[Error] Could not find a registered module for system path: '"
-		<< systemFullPath << "'\n";
-	return std::nullopt;
+	//Log::error() << "Could not find a registered module for system path: '"
+	//	<< systemFullPath << "'\n";
+	//return std::nullopt;
 }
+*/
 
 
 // ================================================================================================
@@ -167,11 +179,17 @@ void TestRunnerImpl::UnitTest::normalizeSystemNames()
 	for (auto& sys : systems) {
 		// Normalize system name: replace "." with "::" to handle both notations
 		std::string normalizedName = sys.name;
-		size_t pos = 0;
-		while ((pos = sys.name.find(".", pos)) == std::string::npos) {
-			normalizedName.replace(pos, 1, "::");
-			pos += 2; // Move past the replacement
+		
+		const std::string s = ".";
+		const std::string t = "::";
+
+		std::string::size_type n = 0;
+		while ((n = normalizedName.find(s, n)) != std::string::npos)
+		{
+			normalizedName.replace(n, s.size(), t);
+			n += t.size();
 		}
+
 		sys.name = normalizedName;
 	}
 }
@@ -201,8 +219,14 @@ void TestRunnerImpl::applyConfiguration(
 	flecs::world& world, TestRunnerImpl::UnitTest::WorldConfiguration configuration
 ) {
 	for (auto& serializedEntity : configuration) {
+
+	
+
 		auto entity = world.entity();
 		entity.from_json(serializedEntity.c_str());
+
+		//auto ser = entity.to_json();
+		//ser = entity.to_json();
 	}
 }
 
@@ -225,19 +249,54 @@ void TestRunnerImpl::runWorld(
 	}
 }
 
+std::vector<std::string> TestRunnerImpl::resolveModules(const std::vector<std::string>& systemsFullPath)
+{
+	std::vector<std::string> names;
+	for (const auto& path : systemsFullPath) {
+		auto system = getSystemByName(TestRunner::_world, path);
+		if (!system) {
+			continue;
+		}
+
+		auto module = system->parent();
+		if (!module) {
+			throw Error("System " + path + " has no parent");
+		}
+
+		std::string moduleFullPath = module.name();
+
+		module = module.parent();
+		while (module) {
+			std::string prefix = module.name();
+			prefix += "::";
+			moduleFullPath = prefix + moduleFullPath;
+
+			module = module.parent();
+		}
+
+		if (std::find(names.begin(), names.end(), moduleFullPath) == names.end()) {
+			names.push_back(moduleFullPath);
+		}
+	}
+	return names;
+}
+
+
 // ================================================================================================
-bool TestRunnerImpl::runUnitTest(UnitTest& test)
+bool TestRunnerImpl::runUnitTest(UnitTest& test, std::ostringstream& out)
 {
 	test.normalizeSystemNames();
 
 	flecs::world worldActual, worldExpected;
 
 	ModuleImporter importer(TestRunner::_moduleImporterRegistry, TestRunner::_typeRegistry);
-	importer.resolveModules(test.getSystemNames());
+	auto modules = resolveModules(test.getSystemNames());
+	importer.setUsedModules(modules);
+
 	runWorld(worldActual, World::Actual, test, importer);
 	runWorld(worldExpected, World::Expected, test, importer);
 	
-	return compareWorlds(worldActual, worldExpected, test.operators);
+	return compareWorlds(worldActual, worldExpected, test.operators, out);
 }
 
 // ================================================================================================
@@ -248,7 +307,9 @@ std::string TestRunnerImpl::runUnitTestIncomplete(UnitTest& test)
 	flecs::world worldActual;
 
 	ModuleImporter importer(TestRunner::_moduleImporterRegistry, TestRunner::_typeRegistry);
-	importer.resolveModules(test.getSystemNames());
+	auto modules = resolveModules(test.getSystemNames());
+	importer.setUsedModules(modules);
+
 	runWorld(worldActual, World::Actual, test, importer);
 
 	return worldActual.to_json();
@@ -308,7 +369,6 @@ static bool isAnySegment(const Operator::Path& path, const char delim = Operator
 	return path.find(delim) != std::string::npos;
 }
 */
-
 
 ResolvedPropertyMetadata TestRunnerImpl::resolvePropertyMetadata(
 	flecs::world& ecs, flecs::entity e, Operator::Path path
@@ -389,6 +449,9 @@ ResolvedProperty TestRunnerImpl::resolveProperty(
 	flecs::entity entity, 
 	UnitTest::Operator::Path path
 ) {
+	if (path.path.empty()) {
+		throw Error("Cannot resolve empty path");
+	}
 	std::string initialPath = path;
 	// First segment (The Component)
 	std::string segment = path.popSegment();
@@ -449,21 +512,21 @@ ResolvedProperty TestRunnerImpl::resolveProperty(
 
 bool TestRunnerImpl::compareComponents(
 	ecs_world_t* world, 
-	ecs_entity_t component_id, 
+	ecs_entity_t componentId, 
 	const void* lhs, 
 	const void* rhs,
-	Operator::Type operatorType
+	Operator::Type operatorType,
+	std::ostream& os
 ) {
-	const ecs_type_info_t* ti = ecs_get_type_info(world, component_id);
+	const ecs_type_info_t* ti = ecs_get_type_info(world, componentId);
 
 	if (!ti) {
-		Log::error() << "Component " << component_id << " is missing type info" << "\n";
+		std::ostringstream ss;
+		ss << "Component " << componentId << " is missing type info" << "\n";
+		Log::error() << ss.str();
+		os << ss.str();
 		return false;
 	}
-	
-	/* TODO: need that?
-		if (!ti) return memcmp(p1, p2, ecs_get_typeid_size(world, component_id)) == 0;
-	*/
 
 	if (operatorType == Operator::Type::EQ) {
 		return ti->hooks.equals(lhs, rhs, ti);
@@ -486,53 +549,20 @@ bool TestRunnerImpl::compareComponents(
 		return ti->hooks.cmp(lhs, rhs, ti) >= 0;
 	}
 
-#if 0
-
-	// Priority 1: Explicit Equality Hook (fastest for bool check)
-	if (ti->hooks.equals) {
-		return ti->hooks.equals(lhs, rhs, ti);
-	}
-
-	// Priority 2: Comparison Hook (returns 0 for equal)
-	if (ti->hooks.cmp) {
-		return ti->hooks.cmp(lhs, rhs, ti) == 0;
-	}
-
-	// Fallback: Byte-wise comparison
-	return memcmp(lhs, rhs, ti->size) == 0;
-#endif
+	throw Error("Invalid operator type");
 }
 
 bool TestRunnerImpl::compareWorldsComplete(flecs::world& world1, flecs::world& world2) {
-	Log::info() << "\nWorld Comparison (using serialization):\n";
-	Log::info() << "========================================\n";
-
 	flecs::string json1 = world1.to_json();
 	flecs::string json2 = world2.to_json();
 
-	/*
-	Log::info() << "\nWorld 1 JSON:\n";
-	Log::info() << json1 << "\n";
+	// TODO: find a more efficient way?
+	bool matches = json1 == json2;
 
-	Log::info() << "\nWorld 2 JSON:\n";
-	Log::info() << json2 << "\n";
-	*/
-
-	// Compare the serialized representations
-	// TODO: find a more efficient way
-	bool matches = (json1 == json2);
-
-	Log::info() << "\n";
-	if (matches) {
-		Log::info() << "WORLDS MATCH!\n";
-		Log::info() << "The serialized JSON representations are identical.\n";
-	} else {
-		Log::info() << "WORLDS DO NOT MATCH!\n";
-		Log::info() << "The serialized JSON representations differ.\n";
-
-		// Show size difference as a hint
-		Log::info() << "\nJSON sizes: World1=" << json1.size()
-			<< " bytes, World2=" << json2.size() << " bytes\n";
+	if (!matches) {
+		Log::trace() << "WORLDS DO NOT MATCH!\n";
+		Log::trace() << "JSON byte length: \nWorld1=" << json1.size()
+			<< "\nWorld2=" << json2.size();
 	}
 
 	return matches;
@@ -574,16 +604,24 @@ bool entities_are_equal(ecs_world_t* world, ecs_entity_t e1, ecs_entity_t e2) {
 }
 */
 
+// TODO: find more efficient way to compare
+static bool compareEntitiesEq(flecs::entity initial, flecs::entity expected) {
+	return initial.to_json() == expected.to_json();
+}
 
 static bool compareEntities(flecs::entity initial, flecs::entity expected, Operator::Type operatorType) {
 	if (operatorType == Operator::Type::EQ) {
-
-
-		return initial.to_json() == expected.to_json();
+		return compareEntitiesEq(initial, expected);
 	} else if (operatorType == Operator::Type::NEQ) {
-		return initial.to_json() != expected.to_json();
-	} else {
-		Log::warn() << "Entity comparison supports only '==' or '!==' comparison types\n";
+		return !compareEntitiesEq(initial, expected);
+	} else if (
+		operatorType == Operator::Type::LTE || 
+		operatorType == Operator::Type::GTE
+	) {
+		Log::warn() << "Entity comparison treats LTE and GTE as EQ!\n";
+		return compareEntitiesEq(initial, expected);
+ 	} else {
+		Log::error() << "Entity comparison supports only EQ and NEQ comparison operators\n";
 		return false;
 	}
 }
@@ -612,11 +650,22 @@ static bool compareProperties(ResolvedPropertyMetadata initial, ResolvedProperty
 }
 
 bool TestRunnerImpl::compareWorlds(
-	flecs::world& initial, flecs::world& expected, TestRunnerImpl::UnitTest::Operators operators
+	flecs::world& initial, 
+	flecs::world& expected, 
+	TestRunnerImpl::UnitTest::Operators operators,
+	std::ostream& out
 ) {
+	// TODO: add setting to compare only until first failure.
+
 	if (operators.empty()) {
 		// TODO: support == vs !==
-		return compareWorldsComplete(initial, expected);
+		if (compareWorldsComplete(initial, expected)) {
+			out << "Worlds match";
+			return true;
+		} else {
+			out << "Worlds do not match";
+			return false;
+		}
 	}
 
 	auto getEntity = [&](flecs::world& ecs, const std::string& name) -> flecs::entity {
@@ -627,35 +676,35 @@ bool TestRunnerImpl::compareWorlds(
 			return entity;
 		};
 
-	bool comparisonFailed = false;
+	bool result = false;
 
 	for (auto& oper : operators) {
 		std::string entityName = oper.path.popSegment();
 		if (entityName.empty()) {
-			// TODO: warning operator path empty
+			Log::error() << "Operator path is empty";
 			continue;
 		}
+
+		out << "Comparison for:\n\t" << oper << "\n\t";
 
 		auto initialEntity = getEntity(initial, entityName);
 		auto expectedEntity = getEntity(expected, entityName);
 
 		if (!oper.path.isAnySegment()) {
-			if (!compareEntities(initialEntity, expectedEntity, oper.type)) {
-				comparisonFailed = true;
-				break;
+			if (compareEntities(initialEntity, expectedEntity, oper.type)) {
+				out << "OK\n";
+				return true;
+			} else {
+				out << "FAIL\n";
+				return false;
 			}
 		}
 
-		auto propertyIntial = resolvePropertyMetadata(initial, initialEntity, oper.path);
-		auto propertyExpected = resolvePropertyMetadata(expected, expectedEntity, oper.path);
+		auto propertyIntial		= resolveProperty(initial, initialEntity, oper.path);
+		auto propertyExpected = resolveProperty(expected, expectedEntity, oper.path);
 
-		/*/
-		if (!compareProperties(propertyIntial, propertyExpected, oper.type)) {
-			comparisonFailed = true;
-		}
-		/*/
 		if (
-			!compareComponents(
+			compareComponents(
 				initial, 
 				propertyIntial.type, 
 				propertyIntial.ptr, 
@@ -663,13 +712,15 @@ bool TestRunnerImpl::compareWorlds(
 				oper.type
 			)
 		) {
-			comparisonFailed = true;
+			out << "OK\n";
+			result = true;
+		} else {
+			out << "FAIL\n";
+			result = false;
 		}
-		//*/
 	}
 
-
-	return !comparisonFailed;
+	return result;
 }
 
 void TestRunnerImpl::runSystems(const flecs::world& world, const UnitTest::Systems& systems)

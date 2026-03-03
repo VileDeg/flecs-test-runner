@@ -23,8 +23,9 @@ FetchContent_MakeAvailable(
 )
 
 set(SRC_FILES
-    test_runner_test.cpp
-    movement_module_test.cpp
+    common.h
+    compare_property_test.cpp
+    run_unit_test.cpp
 )
 
 enable_testing()

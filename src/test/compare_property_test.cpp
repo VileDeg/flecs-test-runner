@@ -1,42 +1,4 @@
-#include <gtest/gtest.h>
-
-#include <test_runner/test_runner.h>
-#include <test_runner_impl.h>
-
-#include <modules/test.h>
-
-using tr = TestRunner;
-using tri = TestRunnerImpl;
-
-using UnitTest = tri::UnitTest;
-
-using Operator = UnitTest::Operator;
-using OpType = Operator::Type;
-
-
-using namespace movement;
-
-static const std::string TEST_MODULE_NAME = "movement.module";
-
-template <typename T>
-struct TypeInfo;
-
-//#define TYPE_INFO(_Comp, _Name) \
-//template <>\
-//struct TypeInfo<_Comp> {\
-//	inline static const std::string COMP_NAME = TEST_MODULE_NAME + "." + _Name;\
-//};
-#define TYPE_INFO(_Comp, _Name) \
-template <>\
-struct TypeInfo<_Comp> {\
-    static const std::string& get_name() {\
-        static const std::string name = TEST_MODULE_NAME + "." + _Name;\
-        return name;\
-    }\
-};
-TYPE_INFO(movement::Speed, "Speed");
-TYPE_INFO(movement::PositionVector, "PositionVector");
-TYPE_INFO(movement::PositionArray, "PositionArray");
+#include "common.h"
 
 template <typename T>
 struct OpTestCase {
@@ -165,12 +127,11 @@ protected:
 		);
 	}
 
-	inline static const std::string COMP_NAME			= TypeInfo<TestComponent>::get_name();
+	inline static const std::string COMP_NAME			= TypeInfo<TestComponent>::getName();
 	inline static const std::string COMP_NAME_SEP = COMP_NAME + tri::UnitTest::Operator::Path::DELIMETER;
 
 	flecs::world _ecs;
 };
-
 
 using ComparePropertyTest_Speed = ComparePropertyTest<movement::Speed>;
 using ComparePropertyTest_PositionVector = ComparePropertyTest<movement::PositionVector>;
@@ -215,7 +176,7 @@ static const PositionVector posVector_22_4242 = { { pos22, pos4242 } };
 static const TestCaseVector::Components posVector_11_4242_Same		= { posVector_11_4242, posVector_11_4242 };
 static const TestCaseVector::Components posVector_11_4242_22_4242 = { posVector_11_4242, posVector_22_4242 };
 
-static const char* move_Speed_Vector = "moveVector_Speed";
+static const char* move_Speed_Vector = "movement::module::moveVector_Speed";
 
 template <typename T>
 OpTestCase<T> MakeTestCase(
@@ -257,19 +218,6 @@ auto GenerateCompareTests(
 	return cases;
 }
 
-template <typename T>
-std::vector<OpTestCase<T>> MergeTests(std::vector<std::vector<OpTestCase<T>>>&& groups) {
-	std::vector<OpTestCase<T>> allCases;
-	for (auto& group : groups) {
-		allCases.insert(
-			allCases.end(),
-			std::make_move_iterator(group.begin()),
-			std::make_move_iterator(group.end())
-		);
-	}
-	return allCases;
-}
-
 const std::vector<std::string> testPaths = { "", "data", "data/0", "data/0/x" };
 
 INSTANTIATE_TEST_SUITE_P(
@@ -284,7 +232,7 @@ INSTANTIATE_TEST_SUITE_P(
 	InequalityTests,
 	PositionVectorTest,
 	testing::ValuesIn(
-		MergeTests<PositionVector>({
+		MergeTests<OpTestCase<PositionVector>>(
 			GenerateCompareTests<PositionVector>(
 				posVector_11_4242_22_4242, 
 				testPaths, 
@@ -296,48 +244,7 @@ INSTANTIATE_TEST_SUITE_P(
 				OpType::GT, 
 				false
 			)
-		})
+		)
 	)
 );
 
-
-/*
-	Test:
-		EQ, LT for:
-			component (not nested)
-			array
-			vector
-			array / vector: 
-				primitive property under element which is a struct
-		EQ Exception:
-				component with no "on_equals" hook
-		LT Exception:
-				component with no "on_compare" hook
-
-		Other param variations through parameterized text fixture
-		Vector/array variations through typed test
-*/
-
-/* Serialized entity:
-{
-	"name": "Initial",
-	"components": {
-	"movement.module.Speed": {
-			"value": 1.0
-		},
-		"movement.module.PositionVector": {
-			"data": [
-				{
-					"x": 1,
-					"y": 1
-				},
-				{
-					"x": 42,
-					"y": 42
-				}
-			]
-		}
-	}
-}
-
-*/

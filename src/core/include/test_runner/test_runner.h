@@ -16,6 +16,7 @@ class TestRunner {
 public:
 	using WorldCallback = TestRunnerDetail::WorldCallback;
 	using LogLevel = TestRunnerDetail::LogLevel;
+	using Log = TestRunnerDetail::Log;
 	using TypeRegistry = TestRunnerDetail::TypeRegistry;
 	
 	using ModulesMap = std::map<std::string, WorldCallback>;
@@ -34,40 +35,25 @@ public:
 	// TODO: must be called after modules are registered?
 	template <typename... Ts>
 	static void registerTypes(flecs::world& world) { // flecs::world& world
+		if (_world != world) {
+			throw Error("Is not the same world as passed during construction");
+		}
+
 		_typeRegistry.add<Ts...>();
 		_typeRegistry.applyAll(world);
-	}
-
-	template <typename T>
-	static void registerModule(flecs::world& world) {
-		//initialize(world);
-
-		// Import module to make available for query
-		auto m = world.import<T>();
-		m.add<TestableModule>();
-
-		std::string name = TestRunnerDetail::getTypeName<T>();
-
-		Log::trace() << "Registered module \"" << name << "\"";
-		// Store in map to allow for later import in test world
-		_moduleImporterRegistry[name] = [](flecs::world& w) {
-			w.import<T>();
-		};
-	}
-
-	template <typename... Ts>
-	static void registerModules(flecs::world& world) {
-		(registerModule<Ts>(world), ...);
 	}
 
 	// Can pass modules to register if want
 	template <typename... Ts>
 	static void initialize(flecs::world& world) {
+		_world = world;
+		
 		if (!_initialized) {
-			// Registered test runner itself if not registered
+			// Register test runner itself if not registered
 			world.import<TestRunner>();
 
 			// Register primitive types
+			// TODO: remove?
 			registerTypes<
 				bool, char,
 				int8_t, int16_t, int32_t, int64_t,
@@ -83,8 +69,30 @@ public:
   
   static void setLogLevel(LogLevel logLevel);
 
+protected:
+	template <typename T>
+	static void registerModule(flecs::world& world) {
+		// Import module to make available for query
+		auto m = world.import<T>();
+		m.add<TestableModule>();
+
+		std::string name = TestRunnerDetail::getTypeName<T>();
+
+		Log::trace() << "Registered module \"" << name << "\"";
+		// Store in map to allow for later import in test world
+		_moduleImporterRegistry[name] = [](flecs::world& w) {
+			w.import<T>();
+			};
+	}
+
+	template <typename... Ts>
+	static void registerModules(flecs::world& world) {
+		(registerModule<Ts>(world), ...);
+	}
 private:
 	friend class TestRunnerImpl;
+
+	inline static flecs::world _world;
 
 	/**
 	* Maps module name to importer function.

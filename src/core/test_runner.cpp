@@ -52,6 +52,8 @@ using TestableModule = TestRunner::TestableModule;
 
 // ================================================================================================
 TestRunner::TestRunner(flecs::world& world) {
+	using Operator = UnitTest::Operator;
+
   // TODO: reflection for string and vector built-in by flecs?
   world.component<std::string>()
     .opaque(flecs::String) // Opaque type that maps to string
@@ -66,14 +68,31 @@ TestRunner::TestRunner(flecs::world& world) {
 	world.component<std::vector<std::string>>()
 		.opaque(reflection::std_vector_support<std::string>);
 
+	// Tags
   world.component<UnitTest::Ready>();
   world.component<UnitTest::Passed>();
   world.component<UnitTest::Executed>()
     .member<std::string>("statusMessage");
   world.component<UnitTest::Incomplete>()
     .member<std::string>("worldExpectedSerialized");
-    
+  
+	// Operator
+	world.component<Operator::Path>()
+		.member<std::string>("path");
+	world.component<Operator::Type>()
+		.constant("EQ", Operator::Type::EQ)
+		.constant("NEQ", Operator::Type::NEQ)
+		.constant("LT", Operator::Type::LT)
+		.constant("LTE", Operator::Type::LTE)
+		.constant("GT", Operator::Type::GT)
+		.constant("GTE", Operator::Type::GTE);
+	world.component<UnitTest::Operator>()
+		.member<Operator::Path>("path")
+		.member<Operator::Type>("type");
+	world.component<std::vector<UnitTest::Operator>>()
+		.opaque(reflection::std_vector_support<UnitTest::Operator>);
 
+	// System
   world.component<SystemInvocation>()
     .member<std::string>("name")
     .member<int>("timesToRun");
@@ -81,13 +100,12 @@ TestRunner::TestRunner(flecs::world& world) {
   world.component<std::vector<SystemInvocation>>()
     .opaque(reflection::std_vector_support<SystemInvocation>);
 
-
-  // TODO: maybe use some template magic to add reflection?
   world.component<UnitTest>()
     .member<std::string>("name")
     .member<std::vector<SystemInvocation>>("systems")
-    .member<std::string>("scriptActual")
-    .member<std::string>("scriptExpected");
+    .member<std::vector<std::string>>("initialConfiguration")
+    .member<std::vector<std::string>>("expectedConfiguration")
+		.member<std::vector<Operator>>("operators");
 
   world.component<TestableModule>();
 
@@ -99,7 +117,7 @@ TestRunner::TestRunner(flecs::world& world) {
     .without<UnitTest::Incomplete>()
     .each([this](flecs::entity e, UnitTest& test) {
       try {
-				Log::info() << "Running test: " << test.name << "\n";
+				Log::info() << "Running test: " << test.name;
 
 				auto status = test.validate();
 				if (status.has_value()) {
@@ -109,14 +127,12 @@ TestRunner::TestRunner(flecs::world& world) {
 					throw Error(ss.str());
 				}
 
-				std::string statusMessage;
-				if (TestRunnerImpl::runUnitTest(test)) {
+				std::ostringstream ss;
+				if (TestRunnerImpl::runUnitTest(test, ss)) {
+					Log::info() << "Test PASSED";
 					e.add<UnitTest::Passed>();
-					statusMessage = "OK";
-				} else {
-					statusMessage = "Worlds do not match. Actual vs. expected";
 				}
-				e.set<UnitTest::Executed>({ statusMessage });
+				e.set<UnitTest::Executed>({ ss.str()});
       }
       catch (const std::runtime_error& e) {
         Log::error() << "Error [" << __FUNCTION__ << "]: " << e.what() << "\n";
@@ -138,13 +154,18 @@ TestRunner::TestRunner(flecs::world& world) {
 					std::stringstream ss;
 					ss << "Failed to run test " << test.name << ": " << *status << "\n";
 					e.set<UnitTest::Executed>({ *status });
-					throw Error(ss.str());
+					//e.set<UnitTest::Incomplete>({ "" });
+					return;
+					//throw Error(ss.str());
 				}
 
 				std::string expectedSerialized = TestRunnerImpl::runUnitTestIncomplete(test);
 
 				e.set<UnitTest::Executed>({ "OK" });
 				e.set<UnitTest::Incomplete>({ expectedSerialized });
+				e.add<UnitTest::Passed>();
+
+				Log::info() << "OK test (Incomplete): " << test.name << "\n";
       }
       catch (const std::runtime_error& e) {
         Log::error() << "Error [" << __FUNCTION__ << "]: " << e.what() << "\n";
