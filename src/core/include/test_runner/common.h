@@ -146,8 +146,18 @@ template<typename T>
 inline static constexpr bool has_gte_v = has_gte<T>::value;
 
 
+enum class OperatorType {
+	EQ,
+	NEQ,
+	LT,
+	LTE,
+	GT,
+	GTE,
+};
 
-
+/**
+* TODO: deprecated
+*/
 struct TypeMetadata {
 	using ComparisonFunc = bool (*)(const void*, const void*);
 
@@ -174,6 +184,18 @@ struct TypeMetadata {
 	ComparisonFuncs funcs;
 };
 
+/**
+* Add as a component to all registered components
+* to capture the presence of comparison hooks.
+* Also add to all primitive value components.
+*/
+struct SupportedOperators {
+	bool equals;
+	bool cmp;
+	//using Types = std::vector<OperatorType>;
+	//Types types;
+};
+
 class TypeRegistry {
 public:
 
@@ -181,9 +203,12 @@ public:
 	void add() {
 
 		// Use a fold expression to populate the vector
-		(_registrars.push_back([](flecs::world& world) {
-			registerTypeImpl<Ts>(world);
-			}), ...);
+		(
+			_registrars.push_back([](flecs::world& world) {
+					registerTypeImpl<Ts>(world);
+				}), 
+			...
+		);
 	}
 
 	const std::vector<WorldCallback>& getRegistrars() const {

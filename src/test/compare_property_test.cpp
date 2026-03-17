@@ -6,7 +6,7 @@ struct OpTestCase {
 		T a, b;
 	};
 
-	Operator::Type op;
+	OperatorType op;
 	Components components;
 	Operator::Path propertyPath;
 	bool expectedResult;
@@ -28,14 +28,10 @@ protected:
 		InitWorld(_ecs);
 	}
 
-	void TearDown() override {
-		// teardown code comes here
-	}
-
 	void InitWorld(flecs::world& ecs) {
 		TestRunner::initialize<movement::module>(ecs);
 		// TODO: remove?
-		TestRunner::registerTypes<movement::Speed, movement::PositionVector>(ecs);
+		//TestRunner::registerTypes<movement::Speed, movement::PositionVector>(ecs);
 	}
 
 	flecs::entity AddEntity(std::optional<std::string> name = std::nullopt) {
@@ -88,7 +84,7 @@ protected:
 		const ComponentType& compA, 
 		const ComponentType& compB,
 		const Operator::Path& propertyPath, 
-		Operator::Type op,
+		OperatorType op,
 		bool comparisonResult = true
 	) {
 		auto [init, exp] = createProperties(compA, compB, propertyPath);
@@ -107,7 +103,7 @@ protected:
 		const ComponentType& initial,
 		const ComponentType& expected,
 		const Operator::Path& propertyPath,
-		Operator::Type op,
+		OperatorType op,
 		const tri::UnitTest::Systems& systems,
 		bool comparisonResult = true
 	) {

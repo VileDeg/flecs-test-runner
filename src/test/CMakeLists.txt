@@ -26,6 +26,7 @@ set(SRC_FILES
     common.h
     compare_property_test.cpp
     run_unit_test.cpp
+    component_metadata_test.cpp
 )
 
 enable_testing()

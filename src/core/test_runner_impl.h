@@ -70,14 +70,15 @@ public:
 		};
 
 		struct Operator {
-			enum class Type {
-				EQ,
-				NEQ,
-				LT,
-				LTE,
-				GT,
-				GTE,
-			};
+			using Type = OperatorType;
+			//enum class Type {
+			//	EQ,
+			//	NEQ,
+			//	LT,
+			//	LTE,
+			//	GT,
+			//	GTE,
+			//};
 
 			static std::string typeToString(Type type) {
 				if (type == Type::EQ) {
@@ -259,7 +260,7 @@ public:
 		return component;
 	}
 
-	static std::vector<std::string> resolveModules(const std::vector<std::string>& systemsFullPath);
+	static std::vector<std::string> resolveModules(const flecs::world& world, const std::vector<std::string>& systemsFullPath);
 
 	// ================================================================================================
 	static ResolvedPropertyMetadata resolvePropertyMetadata(
@@ -290,7 +291,7 @@ public:
 		ecs_entity_t componentId,
 		const void* lhs,
 		const void* rhs,
-		UnitTest::Operator::Type operatorType,
+		OperatorType operatorType,
 		std::ostream& os
 	);
 	static bool compareComponents(
@@ -298,7 +299,7 @@ public:
 		ecs_entity_t componentId,
 		const void* lhs,
 		const void* rhs,
-		UnitTest::Operator::Type operatorType
+		OperatorType operatorType
 	) {
 		return compareComponents(world, componentId, lhs, rhs, operatorType, Log::trace());
 	}
@@ -329,16 +330,16 @@ public:
 		const ModuleImporter& importer
 	);
 	// ================================================================================================
-	static bool runUnitTest(UnitTest& test, std::ostringstream& out);
-	static bool runUnitTest(UnitTest& test) {
+	static bool runUnitTest(const flecs::world& world, UnitTest& test, std::ostringstream& out);
+	static bool runUnitTest(const flecs::world& world, UnitTest& test) {
 		std::ostringstream dummy;
-		return runUnitTest(test, dummy);
+		return runUnitTest(world, test, dummy);
 	}
 	// ================================================================================================
 	/**
 	* Returns serialized world 
 	*/
-	static std::string runUnitTestIncomplete(UnitTest& test);
+	static std::string runUnitTestIncomplete(const flecs::world& world, UnitTest& test);
 	// ================================================================================================
 	static void applyConfiguration(
 		flecs::world& world, UnitTest::WorldConfiguration configuration

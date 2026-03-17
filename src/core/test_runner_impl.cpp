@@ -249,11 +249,11 @@ void TestRunnerImpl::runWorld(
 	}
 }
 
-std::vector<std::string> TestRunnerImpl::resolveModules(const std::vector<std::string>& systemsFullPath)
+std::vector<std::string> TestRunnerImpl::resolveModules(const flecs::world& world, const std::vector<std::string>& systemsFullPath)
 {
 	std::vector<std::string> names;
 	for (const auto& path : systemsFullPath) {
-		auto system = getSystemByName(TestRunner::_world, path);
+		auto system = getSystemByName(world, path);
 		if (!system) {
 			continue;
 		}
@@ -283,14 +283,14 @@ std::vector<std::string> TestRunnerImpl::resolveModules(const std::vector<std::s
 
 
 // ================================================================================================
-bool TestRunnerImpl::runUnitTest(UnitTest& test, std::ostringstream& out)
+bool TestRunnerImpl::runUnitTest(const flecs::world& world, UnitTest& test, std::ostringstream& out)
 {
 	test.normalizeSystemNames();
 
 	flecs::world worldActual, worldExpected;
 
 	ModuleImporter importer(TestRunner::_moduleImporterRegistry, TestRunner::_typeRegistry);
-	auto modules = resolveModules(test.getSystemNames());
+	auto modules = resolveModules(world, test.getSystemNames());
 	importer.setUsedModules(modules);
 
 	runWorld(worldActual, World::Actual, test, importer);
@@ -300,14 +300,14 @@ bool TestRunnerImpl::runUnitTest(UnitTest& test, std::ostringstream& out)
 }
 
 // ================================================================================================
-std::string TestRunnerImpl::runUnitTestIncomplete(UnitTest& test)
+std::string TestRunnerImpl::runUnitTestIncomplete(const flecs::world& world, UnitTest& test)
 {
 	test.normalizeSystemNames();
 
 	flecs::world worldActual;
 
 	ModuleImporter importer(TestRunner::_moduleImporterRegistry, TestRunner::_typeRegistry);
-	auto modules = resolveModules(test.getSystemNames());
+	auto modules = resolveModules(world, test.getSystemNames());
 	importer.setUsedModules(modules);
 
 	runWorld(worldActual, World::Actual, test, importer);
@@ -515,41 +515,56 @@ bool TestRunnerImpl::compareComponents(
 	ecs_entity_t componentId, 
 	const void* lhs, 
 	const void* rhs,
-	Operator::Type operatorType,
+	OperatorType operatorType,
 	std::ostream& os
 ) {
 	const ecs_type_info_t* ti = ecs_get_type_info(world, componentId);
 
-	if (!ti) {
-		std::ostringstream ss;
-		ss << "Component " << componentId << " is missing type info" << "\n";
-		Log::error() << ss.str();
-		os << ss.str();
-		return false;
+	auto runCmp = [&]() -> int {
+		if (ti->hooks.cmp && !(ti->hooks.flags & ECS_TYPE_HOOK_CMP_ILLEGAL)) {
+			return ti->hooks.cmp(lhs, rhs, ti);
+		}
+		throw Error("Missing comparison hooks");
+	};
+
+	auto runEquals = [&]() -> bool {
+		return ti->hooks.equals && !(ti->hooks.flags & ECS_TYPE_HOOK_EQUALS_ILLEGAL)
+			? ti->hooks.equals(lhs, rhs, ti)
+			: runCmp() == 0;
+	};
+
+	try {
+		if (!ti) {
+			std::ostringstream ss;
+			ss << "Component " << componentId << " is missing type info" << "\n";
+			throw Error(ss.str());
+		}
+
+		if (operatorType == OperatorType::EQ) {
+			return runEquals();
+		}
+		if (operatorType == OperatorType::NEQ) {
+			return !runEquals();
+		}
+
+		if (operatorType == OperatorType::LT) {
+			return runCmp() < 0;
+		}
+		if (operatorType == OperatorType::LTE) {
+			return runCmp() <= 0;
+		}
+		if (operatorType == OperatorType::GT) {
+			return runCmp() > 0;
+		}
+		if (operatorType == OperatorType::GTE) {
+			return runCmp() >= 0;
+		}
+	} catch (const Error& e) {
+		Log::error() << e.what();
+		os << e.what();
 	}
 
-	if (operatorType == Operator::Type::EQ) {
-		return ti->hooks.equals(lhs, rhs, ti);
-	}
-	if (operatorType == Operator::Type::NEQ) {
-		return !ti->hooks.equals(lhs, rhs, ti);
-	}
-
-	if (operatorType == Operator::Type::LT) {
-		return ti->hooks.cmp(lhs, rhs, ti) < 0;
-	}
-	if (operatorType == Operator::Type::LTE) {
-		return ti->hooks.cmp(lhs, rhs, ti) <= 0;
-	}
-
-	if (operatorType == Operator::Type::GT) {
-		return ti->hooks.cmp(lhs, rhs, ti) > 0;
-	}
-	if (operatorType == Operator::Type::GTE) {
-		return ti->hooks.cmp(lhs, rhs, ti) >= 0;
-	}
-
-	throw Error("Invalid operator type");
+	return false;
 }
 
 bool TestRunnerImpl::compareWorldsComplete(flecs::world& world1, flecs::world& world2) {
@@ -609,14 +624,14 @@ static bool compareEntitiesEq(flecs::entity initial, flecs::entity expected) {
 	return initial.to_json() == expected.to_json();
 }
 
-static bool compareEntities(flecs::entity initial, flecs::entity expected, Operator::Type operatorType) {
-	if (operatorType == Operator::Type::EQ) {
+static bool compareEntities(flecs::entity initial, flecs::entity expected, OperatorType operatorType) {
+	if (operatorType == OperatorType::EQ) {
 		return compareEntitiesEq(initial, expected);
-	} else if (operatorType == Operator::Type::NEQ) {
+	} else if (operatorType == OperatorType::NEQ) {
 		return !compareEntitiesEq(initial, expected);
 	} else if (
-		operatorType == Operator::Type::LTE || 
-		operatorType == Operator::Type::GTE
+		operatorType == OperatorType::LTE || 
+		operatorType == OperatorType::GTE
 	) {
 		Log::warn() << "Entity comparison treats LTE and GTE as EQ!\n";
 		return compareEntitiesEq(initial, expected);
@@ -626,22 +641,22 @@ static bool compareEntities(flecs::entity initial, flecs::entity expected, Opera
 	}
 }
 
-static bool compareProperties(ResolvedPropertyMetadata initial, ResolvedPropertyMetadata expected, Operator::Type operatorType) {
+static bool compareProperties(ResolvedPropertyMetadata initial, ResolvedPropertyMetadata expected, OperatorType operatorType) {
 	// Must be same since they come from the same component entity
 	assert(initial.funcs == expected.funcs);
 	auto funcs = initial.funcs;
 
-	if (operatorType == Operator::Type::EQ) {
+	if (operatorType == OperatorType::EQ) {
 		return funcs.eq(initial.ptr, expected.ptr);
-	} else if (operatorType == Operator::Type::NEQ) {
+	} else if (operatorType == OperatorType::NEQ) {
 		return funcs.neq(initial.ptr, expected.ptr);
-	} else if (operatorType == Operator::Type::LT) {
+	} else if (operatorType == OperatorType::LT) {
 		return funcs.lt(initial.ptr, expected.ptr);
-	} else if (operatorType == Operator::Type::LTE) {
+	} else if (operatorType == OperatorType::LTE) {
 		return funcs.lte(initial.ptr, expected.ptr);
-	} else if (operatorType == Operator::Type::GT) {
+	} else if (operatorType == OperatorType::GT) {
 		return funcs.gt(initial.ptr, expected.ptr);
-	} else if (operatorType == Operator::Type::GTE) {
+	} else if (operatorType == OperatorType::GTE) {
 		return funcs.gte(initial.ptr, expected.ptr);
 	} else {
 		Log::warn() << __func__ << ": invalid comparison operator\n";

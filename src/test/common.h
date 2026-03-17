@@ -13,7 +13,8 @@ using tri = TestRunnerImpl;
 using UnitTest = tri::UnitTest;
 
 using Operator = UnitTest::Operator;
-using OpType = Operator::Type;
+//using OpType = OperatorType;
+using OpType = OperatorType;
 
 static const std::string TEST_MODULE_NAME = "movement.module";
 

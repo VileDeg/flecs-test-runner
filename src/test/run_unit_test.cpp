@@ -23,7 +23,7 @@ protected:
 	void InitWorld(flecs::world& ecs) {
 		TestRunner::initialize<movement::module>(ecs);
 		// TODO: remove?
-		TestRunner::registerTypes<movement::Speed, movement::PositionVector>(ecs);
+		//TestRunner::registerTypes<movement::Speed, movement::PositionVector>(ecs);
 	}
 
 	flecs::world _ecs;
@@ -96,14 +96,14 @@ static std::string createPath(
 }
 
 struct OperatorResult {
-	OperatorResult(Operator::Type type)
+	OperatorResult(OperatorType type)
 		: type(type), result(true) {
 	}
-	OperatorResult(Operator::Type type, bool r)
+	OperatorResult(OperatorType type, bool r)
 		: type(type), result(r) {
 	}
 
-	Operator::Type type;
+	OperatorType type;
 	bool result;
 };
 
@@ -143,8 +143,8 @@ const Terms terms_Entity = {
 		createPath(ENTITY_NAME) 
 	},
 	{ 
-		Operator::Type::EQ,
-		{ Operator::Type::NEQ, false }
+		OperatorType::EQ,
+		{ OperatorType::NEQ, false }
 	}
 };
 
@@ -156,9 +156,9 @@ const Terms terms_Properties = {
 		createPath(ENTITY_NAME, POS_VECTOR, POS_VECTOR_DATA + "/0/x"),
 	},
 	{
-		Operator::Type::EQ,
-		{ Operator::Type::LT, false },
-		{ Operator::Type::LTE, true }
+		OperatorType::EQ,
+		{ OperatorType::LT, false },
+		{ OperatorType::LTE, true }
 	}
 };
 
@@ -167,7 +167,7 @@ TEST_P(RunUnitTest, Success) {
 	UnitTest test = param.test;
 
 	ASSERT_EQ(
-		tri::runUnitTest(test),
+		tri::runUnitTest(_ecs, test),
 		param.result
 	);
 }

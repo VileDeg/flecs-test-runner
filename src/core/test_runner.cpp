@@ -11,8 +11,6 @@
 #include "reflection.h"
 #include <test_runner/common.h>
 
-//using Log = TestRunner::Log;
-
 using namespace TestRunnerDetail;
 
 
@@ -25,30 +23,13 @@ void TestRunner::setLogLevel(LogLevel logLevel) {
   Log::setLevel(logLevel);
 }
 
-/*
-void TestRunner::initialize(flecs::world& world) {
-	if (_initialized) {
-		return;
-	}
-	// Registered test runner itself if not registered
-	world.import<TestRunner>();
-
-	// Register primitive types
-	registerTypes<
-		bool, char,
-		int8_t, int16_t, int32_t, int64_t,
-		uint8_t, uint16_t, uint32_t, uint64_t,
-		float, double
-	>(world);
-
-	_initialized = true;
-}
-*/
-
 using UnitTest = TestRunnerImpl::UnitTest;
 using SystemInvocation = TestRunnerImpl::SystemInvocation;
 using TestableModule = TestRunner::TestableModule;
-
+struct IntFloatPair {
+	int key;
+	float value;
+};
 
 // ================================================================================================
 TestRunner::TestRunner(flecs::world& world) {
@@ -79,18 +60,21 @@ TestRunner::TestRunner(flecs::world& world) {
 	// Operator
 	world.component<Operator::Path>()
 		.member<std::string>("path");
-	world.component<Operator::Type>()
-		.constant("EQ", Operator::Type::EQ)
-		.constant("NEQ", Operator::Type::NEQ)
-		.constant("LT", Operator::Type::LT)
-		.constant("LTE", Operator::Type::LTE)
-		.constant("GT", Operator::Type::GT)
-		.constant("GTE", Operator::Type::GTE);
+	world.component<OperatorType>()
+		.constant("EQ", OperatorType::EQ)
+		.constant("NEQ", OperatorType::NEQ)
+		.constant("LT", OperatorType::LT)
+		.constant("LTE", OperatorType::LTE)
+		.constant("GT", OperatorType::GT)
+		.constant("GTE", OperatorType::GTE);
 	world.component<UnitTest::Operator>()
 		.member<Operator::Path>("path")
-		.member<Operator::Type>("type");
+		.member<OperatorType>("type");
 	world.component<std::vector<UnitTest::Operator>>()
 		.opaque(reflection::std_vector_support<UnitTest::Operator>);
+	world.component<SupportedOperators>()
+		.member<bool>("equals")
+		.member<bool>("cmp");
 
 	// System
   world.component<SystemInvocation>()
@@ -115,7 +99,7 @@ TestRunner::TestRunner(flecs::world& world) {
     .with<UnitTest::Ready>()
     .without<UnitTest::Executed>()
     .without<UnitTest::Incomplete>()
-    .each([this](flecs::entity e, UnitTest& test) {
+    .each([this, &world](flecs::entity e, UnitTest& test) { // TODO: why need capture this?
       try {
 				Log::info() << "Running test: " << test.name;
 
@@ -128,7 +112,7 @@ TestRunner::TestRunner(flecs::world& world) {
 				}
 
 				std::ostringstream ss;
-				if (TestRunnerImpl::runUnitTest(test, ss)) {
+				if (TestRunnerImpl::runUnitTest(world, test, ss)) {
 					Log::info() << "Test PASSED";
 					e.add<UnitTest::Passed>();
 				}
@@ -145,7 +129,7 @@ TestRunner::TestRunner(flecs::world& world) {
     .with<UnitTest::Ready>()
     .without<UnitTest::Executed>()
     .with<UnitTest::Incomplete>()
-    .each([this](flecs::entity e, UnitTest& test) {
+    .each([this, &world](flecs::entity e, UnitTest& test) {
       try {
 				Log::info() << "Running test (Incomplete): " << test.name << "\n";
 
@@ -159,7 +143,7 @@ TestRunner::TestRunner(flecs::world& world) {
 					//throw Error(ss.str());
 				}
 
-				std::string expectedSerialized = TestRunnerImpl::runUnitTestIncomplete(test);
+				std::string expectedSerialized = TestRunnerImpl::runUnitTestIncomplete(world, test);
 
 				e.set<UnitTest::Executed>({ "OK" });
 				e.set<UnitTest::Incomplete>({ expectedSerialized });
