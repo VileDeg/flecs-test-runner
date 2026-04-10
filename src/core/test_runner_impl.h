@@ -19,20 +19,16 @@
 
 using namespace TestRunnerDetail;
 
-struct ResolvedPropertyMetadata {
+// ==============================================================================================
+struct ResolvedProperty {
 	flecs::entity type; // TODO: unused?
 	void* ptr = nullptr; // Actual memory address of the property
-	TypeMetadata::ComparisonFuncs funcs;
 };
 
-struct ResolvedProperty {
-	flecs::entity type; 
-	void* ptr = nullptr; // Actual memory address of the property
-};
-
-
+// ==============================================================================================
 class ModuleImporter;
 
+// ==============================================================================================
 class TestRunnerImpl {
 public:
 	using TypeImporterMap =
@@ -58,27 +54,24 @@ public:
 		};
 
 		// Tags
+		// ==============================================================================================
 		struct Ready {};
 
+		// ==============================================================================================
 		struct Executed {
 			std::string statusMessage;
 		};
+		// ==============================================================================================
 		struct Passed {};
 
+		// ==============================================================================================
 		struct Incomplete {
 			std::string worldExpectedSerialized;
 		};
 
+		// ==============================================================================================
 		struct Operator {
 			using Type = OperatorType;
-			//enum class Type {
-			//	EQ,
-			//	NEQ,
-			//	LT,
-			//	LTE,
-			//	GT,
-			//	GTE,
-			//};
 
 			static std::string typeToString(Type type) {
 				if (type == Type::EQ) {
@@ -182,8 +175,8 @@ public:
 			}
 
 			friend std::ostream& operator<<(std::ostream& os, const Operator& rhs) {
-				os << "[path, type]: " 
-					<< rhs.path << ", " 
+				os << "[path, type]: "
+					<< rhs.path << ", "
 					<< Operator::typeToString(rhs.type);
 				return os;
 			}
@@ -192,64 +185,44 @@ public:
 			Type type;
 		};
 
-		// TODO: use unordered_set
+		// Operators used to define what needs to be compared
 		using Operators = std::vector<Operator>;
+		// Vector of serialized entities
+		using WorldConfiguration = std::vector<std::string>;
 
-		std::string name; // TODO: use some ID (hash) instead of name?
+		// Name is unique
+		std::string name;
 
 		Systems systems;
-
-		// vector of serialized entities
-		using WorldConfiguration = std::vector<std::string>;
 
 		WorldConfiguration initialConfiguration;
 		WorldConfiguration expectedConfiguration;
 
 		Operators operators;
 
-		/*std::string scriptActual;
-		std::string scriptExpected;*/
-
-		std::optional<std::string> validate(bool complete = true) const {
-			std::optional<std::string> statusMessage = std::nullopt;
-			if (name.empty()) {
-				statusMessage = "Name is empty";
-			} else if (systems.empty()) {
-				statusMessage = "No systems to run";
-			} else if (initialConfiguration.empty()) {
-				statusMessage = "Initial configuration is empty";
-			} else if (complete && expectedConfiguration.empty()) {
-				statusMessage = "Expected configuration is empty";
-			}
-			return statusMessage;
-		}
+		// ==============================================================================================
+		std::optional<std::string> validate(bool complete = true) const;
 
 		void normalizeSystemNames();
-		//void runSystems(flecs::world& world) const;
 
 		std::vector<std::string> getSystemNames() const;
 	};
 
-	// ================================================================================================
 	using WorldComparisonResult = std::unordered_map<UnitTest::Operator, bool>;
-
 	
-	// ================================================================================================
+	// ==============================================================================================
 	template <typename... Args>
 	static void addTestEntity(flecs::world& world, const char* name, Args&&... args) {
 		world.entity(name)
 			.set<UnitTest>({ std::forward<Args>(args)... });
 	}
-	// ================================================================================================
+	// ==============================================================================================
 	enum class World {
 		Actual,
 		Expected
 	};
 
-
-	using ModulesMap =
-		std::map<std::string, WorldCallback>;
-
+	// ==============================================================================================
 	static flecs::entity getComponentByName(flecs::world& ecs, const std::string& name) {
 		flecs::entity component = ecs.lookup(name.c_str(), ".", "."); // "/", "/"
 		if (!component) {
@@ -260,14 +233,10 @@ public:
 		return component;
 	}
 
+	// ==============================================================================================
 	static std::vector<std::string> resolveModules(const flecs::world& world, const std::vector<std::string>& systemsFullPath);
 
-	// ================================================================================================
-	static ResolvedPropertyMetadata resolvePropertyMetadata(
-		flecs::world& ecs, flecs::entity e, UnitTest::Operator::Path path
-	);
-
-	// ================================================================================================
+	// ==============================================================================================
 	/**
 	* Expect path to include component name (first segment).
 	* TODO
@@ -276,7 +245,7 @@ public:
 		flecs::world& ecs, flecs::entity entity, UnitTest::Operator::Path path
 	);
 
-	// ================================================================================================
+	// ==============================================================================================
 	/**
 	* TODO
 	* @param propertyPath Path of a property inside a component definiton.
@@ -285,8 +254,8 @@ public:
 		flecs::world& ecs, flecs::entity entity, flecs::entity component, UnitTest::Operator::Path propertyPath
 	);
 
-	//  ================================================================================================
-	static bool compareComponents(
+	//  =============================================================================================
+	static bool compareProperty(
 		ecs_world_t* world,
 		ecs_entity_t componentId,
 		const void* lhs,
@@ -294,25 +263,27 @@ public:
 		OperatorType operatorType,
 		std::ostream& os
 	);
-	static bool compareComponents(
+	// ==============================================================================================
+	static bool compareProperty(
 		ecs_world_t* world,
 		ecs_entity_t componentId,
 		const void* lhs,
 		const void* rhs,
 		OperatorType operatorType
 	) {
-		return compareComponents(world, componentId, lhs, rhs, operatorType, Log::trace());
+		return compareProperty(world, componentId, lhs, rhs, operatorType, Log::trace());
 	}
 
-	// ================================================================================================
+	// ==============================================================================================
 	static bool compareWorldsComplete(flecs::world& world1, flecs::world& world2);
-	// ================================================================================================
+	// ==============================================================================================
 	static bool compareWorlds(
 		flecs::world& initial, 
 		flecs::world& expected, 
 		UnitTest::Operators operators,
 		std::ostream& os
 	);
+	// ==============================================================================================
 	static bool compareWorlds(
 		flecs::world& initial,
 		flecs::world& expected,
@@ -320,32 +291,32 @@ public:
 	) {
 		return compareWorlds(initial, expected, operators, Log::trace());
 	}
-	// ================================================================================================
+	// ==============================================================================================
 	static void runSystems(const flecs::world& world, const UnitTest::Systems& systems);
-	// ================================================================================================
+	// ==============================================================================================
 	static void runWorld(
 		flecs::world& world, 
 		World type, 
 		const UnitTest& test, 
 		const ModuleImporter& importer
 	);
-	// ================================================================================================
+	// ==============================================================================================
 	static bool runUnitTest(const flecs::world& world, UnitTest& test, std::ostringstream& out);
 	static bool runUnitTest(const flecs::world& world, UnitTest& test) {
 		std::ostringstream dummy;
 		return runUnitTest(world, test, dummy);
 	}
-	// ================================================================================================
+	// ==============================================================================================
 	/**
 	* Returns serialized world 
 	*/
 	static std::string runUnitTestIncomplete(const flecs::world& world, UnitTest& test);
-	// ================================================================================================
+	// ==============================================================================================
 	static void applyConfiguration(
 		flecs::world& world, UnitTest::WorldConfiguration configuration
 	);
 
-	// ================================================================================================
+	// ==============================================================================================
 	static std::optional<flecs::system> getSystemByName(
 		const flecs::world& world, const std::string& systemName
 	);

@@ -24,55 +24,33 @@
 
 using namespace TestRunnerDetail;
 
-
 // ================================================================================================
 // ModuleImporter
 // ================================================================================================
 
+// ================================================================================================
 class ModuleImporter {
 public:
-	using ModulesMap =
-		std::map<std::string, WorldCallback>;
 	using ModulesNames = std::vector<std::string>;
-
-	template <typename Derived>
-	using AutoPrefixedError = AutoPrefixedError<Derived>;
 
 	struct ImportError : public AutoPrefixedError<ImportError> {
 		using AutoPrefixedError::AutoPrefixedError;
 	};
 
+	// ==============================================================================================
 	ModuleImporter(
-		const ModulesMap& moduleRegistry,
-		const TypeRegistry& typRegistry
+		const ModuleImporterMap& moduleRegistry
 	)
 		: _moduleRegistry(moduleRegistry)
-		, _typeRegistry(typRegistry)
 	{
 	}
 
+	// ==============================================================================================
 	void setUsedModules(const ModulesNames& modules) {
 		_usedModules = modules;
 	}
 
-	/*
-	void resolveModules(std::vector<std::string> systems)
-	{
-		bool anyModuleFound = false;
-		for (auto& sys : systems) {
-
-			//auto m = matchModuleFromSystem(sys, _moduleRegistry);
-			if (m.has_value()) {
-				anyModuleFound = true;
-				_usedModules.push_back(*m);
-			}
-		}
-		if (!anyModuleFound) {
-			throw ImportError("None of the systems belong to any module");
-		}
-	}
-	*/
-
+	// ==============================================================================================
 	void importAll(flecs::world& world) const
 	{
 		if (_usedModules.empty()) {
@@ -81,77 +59,20 @@ public:
 		for (auto& m : _usedModules) {
 			_moduleRegistry.at(m)(world);
 		}
-
-		// Register all additional metadata for types
-		_typeRegistry.applyAll(world);
-
-		/*for (auto& typeImporter : _typeRegistry) {
-			typeImporter(world);
-		}*/
 	}
 
 private:
-	//std::optional<std::string> matchModuleFromSystem(
-	//	std::string systemFullPath, const ModulesMap& registry
-	//);
-
-	const ModulesMap& _moduleRegistry;
-	const TypeRegistry& _typeRegistry;
-	// TODO: used types
-
+	const ModuleImporterMap& _moduleRegistry;
 	ModulesNames _usedModules;
 };
-
-/*
-std::optional<std::string> ModuleImporter::matchModuleFromSystem(
-	const flecs::entity& system, const ModuleImporter::ModulesMap& registry
-) {
-	system.par
-
-	//std::string current_path = systemFullPath;
-
-	// Iteratively strip the last "::Section" until we find a match
-	//while (true) {
-	//	size_t pos = current_path.rfind("::");
-	//	if (pos == std::string::npos) {
-	//		break; // No more scopes to strip
-	//	}
-
-	//	// Cut off the last part to get the potential module name
-	//	current_path = current_path.substr(0, pos);
-
-	//	// Check if this substring matches a registered module
-	//	if (registry.count(current_path)) {
-	//		Log::info() << "System '" << systemFullPath
-	//			<< "' belongs to module '" << current_path << "\n";
-	//		//_moduleRegistry[current_path](world);
-	//		return current_path;
-	//	}
-	//}
-
-	//Log::error() << "Could not find a registered module for system path: '"
-	//	<< systemFullPath << "'\n";
-	//return std::nullopt;
-}
-*/
-
-
-// ================================================================================================
-
 
 // ================================================================================================
 // Internal classes and methods
 // ================================================================================================
 
-
 using WorldConfiguration = TestRunnerImpl::UnitTest::WorldConfiguration;
 using Operator = TestRunnerImpl::UnitTest::Operator;
 using Operators = TestRunnerImpl::UnitTest::Operators;
-
-// ================================================================================================
-
-
-
 
 // ================================================================================================
 // UnitTest
@@ -171,6 +92,21 @@ std::vector<std::string> TestRunnerImpl::UnitTest::getSystemNames() const {
 		}
 	);
 	return names;
+}
+
+// ================================================================================================
+std::optional<std::string> TestRunnerImpl::UnitTest::validate(bool complete) const {
+	std::optional<std::string> statusMessage = std::nullopt;
+	if (name.empty()) {
+		statusMessage = "Name is empty";
+	} else if (systems.empty()) {
+		statusMessage = "No systems to run";
+	} else if (initialConfiguration.empty()) {
+		statusMessage = "Initial configuration is empty";
+	} else if (complete && expectedConfiguration.empty()) {
+		statusMessage = "Expected configuration is empty";
+	}
+	return statusMessage;
 }
 
 // ================================================================================================
@@ -195,38 +131,12 @@ void TestRunnerImpl::UnitTest::normalizeSystemNames()
 }
 
 // ================================================================================================
-//void TestRunnerImpl::UnitTest::runSystems(flecs::world& world) const
-//{
-//	for (auto& sys : systems) {
-//		// Run system
-//		for (int i = 0; i < sys.timesToRun; ++i) {
-//			auto system = getSystemByName(world, sys.name);
-//			if (!system.has_value()) {
-//				std::stringstream ss;
-//				ss << "System " << sys.name << " not found";
-//				throw Error(ss.str());
-//			}
-//
-//			Log::info() << "[" << i << "] Running system '" << sys.name << "'\n";
-//			system->run();
-//		}
-//	}
-//}
-
-
-
 void TestRunnerImpl::applyConfiguration(
 	flecs::world& world, TestRunnerImpl::UnitTest::WorldConfiguration configuration
 ) {
 	for (auto& serializedEntity : configuration) {
-
-	
-
 		auto entity = world.entity();
 		entity.from_json(serializedEntity.c_str());
-
-		//auto ser = entity.to_json();
-		//ser = entity.to_json();
 	}
 }
 
@@ -241,14 +151,13 @@ void TestRunnerImpl::runWorld(
 
 	if (type == World::Actual) {
 		applyConfiguration(world, test.initialConfiguration);
-		//world.script_run("ScriptActual", test.scriptActual.c_str());
 		runSystems(world, test.systems);
 	} else {
 		applyConfiguration(world, test.expectedConfiguration);
-		//world.script_run("ScriptExpected", test.scriptExpected.c_str());
 	}
 }
 
+// ================================================================================================
 std::vector<std::string> TestRunnerImpl::resolveModules(const flecs::world& world, const std::vector<std::string>& systemsFullPath)
 {
 	std::vector<std::string> names;
@@ -281,7 +190,6 @@ std::vector<std::string> TestRunnerImpl::resolveModules(const flecs::world& worl
 	return names;
 }
 
-
 // ================================================================================================
 bool TestRunnerImpl::runUnitTest(const flecs::world& world, UnitTest& test, std::ostringstream& out)
 {
@@ -289,7 +197,7 @@ bool TestRunnerImpl::runUnitTest(const flecs::world& world, UnitTest& test, std:
 
 	flecs::world worldActual, worldExpected;
 
-	ModuleImporter importer(TestRunner::_moduleImporterRegistry, TestRunner::_typeRegistry);
+	ModuleImporter importer(TestRunner::_moduleImporterRegistry);
 	auto modules = resolveModules(world, test.getSystemNames());
 	importer.setUsedModules(modules);
 
@@ -306,7 +214,7 @@ std::string TestRunnerImpl::runUnitTestIncomplete(const flecs::world& world, Uni
 
 	flecs::world worldActual;
 
-	ModuleImporter importer(TestRunner::_moduleImporterRegistry, TestRunner::_typeRegistry);
+	ModuleImporter importer(TestRunner::_moduleImporterRegistry);
 	auto modules = resolveModules(world, test.getSystemNames());
 	importer.setUsedModules(modules);
 
@@ -314,7 +222,6 @@ std::string TestRunnerImpl::runUnitTestIncomplete(const flecs::world& world, Uni
 
 	return worldActual.to_json();
 }
-
 
 // ================================================================================================
 std::optional<flecs::system> TestRunnerImpl::getSystemByName(
@@ -337,89 +244,7 @@ std::optional<flecs::system> TestRunnerImpl::getSystemByName(
 	return world.system(systemEntity);
 }
 
-
-/*
-
-static std::string getTopSegment(const Operator::Path& path, const char delim = Operator::PATH_SEP) {
-	std::stringstream ss(path);
-	std::string segment;
-
-	std::getline(ss, segment, delim);
-	return segment;
-}
-
-static std::string popSegment(Operator::Path& path, const char delim = Operator::PATH_SEP) {
-	std::stringstream ss(path);
-	std::string segment;
-
-	if (std::getline(ss, segment, delim)) {
-		// Extract the remainder of the stream into the original path
-		std::string remainder;
-		if (std::getline(ss, remainder, '\0')) {
-			path = remainder;
-		} else {
-			path = ""; // No more segments remain
-		}
-	}
-
-	return segment;
-}
-
-static bool isAnySegment(const Operator::Path& path, const char delim = Operator::PATH_SEP) {
-	return path.find(delim) != std::string::npos;
-}
-*/
-
-ResolvedPropertyMetadata TestRunnerImpl::resolvePropertyMetadata(
-	flecs::world& ecs, flecs::entity e, Operator::Path path
-) {
-	//std::stringstream ss(path);
-	std::string segment;
-
-	// Start with the first segment (The Component)
-
-	segment = path.popSegment();
-	//std::getline(ss, segment, Operator::PATH_SEP);
-	flecs::entity comp_id = ecs.lookup(segment.c_str(), ".", ".");
-	void* current_ptr = e.get_mut(comp_id); // Get base memory
-
-	flecs::cursor cur(ecs, comp_id, current_ptr);
-	// need to do push here?
-
-	while (path.isAnySegment()) {
-		segment = path.popSegment();
-
-		// Handle array syntax: member[index]
-		size_t bracket_open = segment.find('[');
-		if (bracket_open != std::string::npos) {
-			std::string member_name = segment.substr(0, bracket_open);
-			int index = std::stoi(segment.substr(bracket_open + 1, segment.find(']') - bracket_open - 1));
-
-			cur.member(member_name.c_str());
-			cur.push();     // Enter the array
-			cur.elem(index); // Move to index
-		} else {
-			if (cur.member(segment.c_str())) {
-				throw Error("Cursor member failed");
-			}
-		}
-
-		// If there are more segments, we need to "push" into the struct
-		if (path.isAnySegment()) {
-			cur.push();
-		}
-	}
-
-	flecs::entity type_ent = cur.get_type();
-	const auto* meta = type_ent.try_get<TypeMetadata>();
-
-	return {
-		type_ent,
-		cur.get_ptr(),
-		meta ? meta->funcs : TypeMetadata::ComparisonFuncs{}
-	};
-}
-
+// ================================================================================================
 int getPositiveInteger(const std::string& s) {
 	if (s.empty()) {
 		throw std::invalid_argument("Empty string");
@@ -435,7 +260,6 @@ int getPositiveInteger(const std::string& s) {
 
 	if (ec == std::errc::invalid_argument) {
 		return -1;
-		//throw std::invalid_argument("Not a valid integer");
 	} else if (ec == std::errc::result_out_of_range) {
 		throw std::out_of_range("Integer overflow");
 	} else if (ptr != s.data() + s.size()) {
@@ -444,6 +268,7 @@ int getPositiveInteger(const std::string& s) {
 	return value;
 }
 
+// ================================================================================================
 ResolvedProperty TestRunnerImpl::resolveProperty(
 	flecs::world& ecs, 
 	flecs::entity entity, 
@@ -459,6 +284,7 @@ ResolvedProperty TestRunnerImpl::resolveProperty(
 	return resolveProperty(ecs, entity, component, path);
 }
 
+// ================================================================================================
 ResolvedProperty TestRunnerImpl::resolveProperty(
 	flecs::world& ecs, 
 	flecs::entity entity, 
@@ -510,7 +336,8 @@ ResolvedProperty TestRunnerImpl::resolveProperty(
 	};
 }
 
-bool TestRunnerImpl::compareComponents(
+// ================================================================================================
+bool TestRunnerImpl::compareProperty(
 	ecs_world_t* world, 
 	ecs_entity_t componentId, 
 	const void* lhs, 
@@ -524,7 +351,7 @@ bool TestRunnerImpl::compareComponents(
 		if (ti->hooks.cmp && !(ti->hooks.flags & ECS_TYPE_HOOK_CMP_ILLEGAL)) {
 			return ti->hooks.cmp(lhs, rhs, ti);
 		}
-		throw Error("Missing comparison hooks");
+		throw Error("Missing comparison hooks\n");
 	};
 
 	auto runEquals = [&]() -> bool {
@@ -560,71 +387,23 @@ bool TestRunnerImpl::compareComponents(
 			return runCmp() >= 0;
 		}
 	} catch (const Error& e) {
-		Log::error() << e.what();
 		os << e.what();
 	}
 
 	return false;
 }
 
-bool TestRunnerImpl::compareWorldsComplete(flecs::world& world1, flecs::world& world2) {
-	flecs::string json1 = world1.to_json();
-	flecs::string json2 = world2.to_json();
-
-	// TODO: find a more efficient way?
-	bool matches = json1 == json2;
-
-	if (!matches) {
-		Log::trace() << "WORLDS DO NOT MATCH!\n";
-		Log::trace() << "JSON byte length: \nWorld1=" << json1.size()
-			<< "\nWorld2=" << json2.size();
-	}
-
-	return matches;
-}
-
-/*
-bool entities_are_equal(ecs_world_t* world, ecs_entity_t e1, ecs_entity_t e2) {
-	if (e1 == e2) return true;
-
-	// 1. Archetype check: Must have the same component IDs/Tags/Pairs
-	ecs_table_t* table = ecs_get_table(world, e1);
-	if (table != ecs_get_table(world, e2)) {
-		return false;
-	}
-
-	// 2. Get storage records (contains table-relative row index)
-	const ecs_record_t* r1 = ecs_record_get(world, e1);
-	const ecs_record_t* r2 = ecs_record_get(world, e2);
-
-	int32_t row1 = ECS_RECORD_TO_ROW(r1->row);
-	int32_t row2 = ECS_RECORD_TO_ROW(r2->row);
-
-	// 3. Iterate through data-carrying columns
-	int32_t column_count = ecs_table_column_count(table);
-	for (int32_t i = 0; i < column_count; ++i) {
-		size_t size = ecs_table_column_size(table, i);
-		if (size == 0) continue; // Skip tags
-
-		void* ptr = ecs_table_get_column(table, i, 0);
-		void* data1 = (char*)ptr + (size * row1);
-		void* data2 = (char*)ptr + (size * row2);
-
-		if (memcmp(data1, data2, size) != 0) {
-			return false;
-		}
-	}
-
-	return true;
-}
-*/
-
+// ================================================================================================
 // TODO: find more efficient way to compare
 static bool compareEntitiesEq(flecs::entity initial, flecs::entity expected) {
 	return initial.to_json() == expected.to_json();
 }
 
+// ================================================================================================
 static bool compareEntities(flecs::entity initial, flecs::entity expected, OperatorType operatorType) {
+	if (initial.id() < 1 || expected.id() < 1) {
+		return false;
+	}
 	if (operatorType == OperatorType::EQ) {
 		return compareEntitiesEq(initial, expected);
 	} else if (operatorType == OperatorType::NEQ) {
@@ -641,29 +420,7 @@ static bool compareEntities(flecs::entity initial, flecs::entity expected, Opera
 	}
 }
 
-static bool compareProperties(ResolvedPropertyMetadata initial, ResolvedPropertyMetadata expected, OperatorType operatorType) {
-	// Must be same since they come from the same component entity
-	assert(initial.funcs == expected.funcs);
-	auto funcs = initial.funcs;
-
-	if (operatorType == OperatorType::EQ) {
-		return funcs.eq(initial.ptr, expected.ptr);
-	} else if (operatorType == OperatorType::NEQ) {
-		return funcs.neq(initial.ptr, expected.ptr);
-	} else if (operatorType == OperatorType::LT) {
-		return funcs.lt(initial.ptr, expected.ptr);
-	} else if (operatorType == OperatorType::LTE) {
-		return funcs.lte(initial.ptr, expected.ptr);
-	} else if (operatorType == OperatorType::GT) {
-		return funcs.gt(initial.ptr, expected.ptr);
-	} else if (operatorType == OperatorType::GTE) {
-		return funcs.gte(initial.ptr, expected.ptr);
-	} else {
-		Log::warn() << __func__ << ": invalid comparison operator\n";
-		return false;
-	}
-}
-
+// ================================================================================================
 bool TestRunnerImpl::compareWorlds(
 	flecs::world& initial, 
 	flecs::world& expected, 
@@ -673,14 +430,8 @@ bool TestRunnerImpl::compareWorlds(
 	// TODO: add setting to compare only until first failure.
 
 	if (operators.empty()) {
-		// TODO: support == vs !==
-		if (compareWorldsComplete(initial, expected)) {
-			out << "Worlds match";
-			return true;
-		} else {
-			out << "Worlds do not match";
-			return false;
-		}
+		out << "Nothing to compare";
+		return false;
 	}
 
 	auto getEntity = [&](flecs::world& ecs, const std::string& name) -> flecs::entity {
@@ -691,16 +442,16 @@ bool TestRunnerImpl::compareWorlds(
 			return entity;
 		};
 
-	bool result = false;
+	bool result = true;
 
 	for (auto& oper : operators) {
+		out << "Comparison for:\n\t" << oper << "\n\t";
+
 		std::string entityName = oper.path.popSegment();
 		if (entityName.empty()) {
-			Log::error() << "Operator path is empty";
+			out << "Operator path is empty";
 			continue;
 		}
-
-		out << "Comparison for:\n\t" << oper << "\n\t";
 
 		auto initialEntity = getEntity(initial, entityName);
 		auto expectedEntity = getEntity(expected, entityName);
@@ -708,29 +459,29 @@ bool TestRunnerImpl::compareWorlds(
 		if (!oper.path.isAnySegment()) {
 			if (compareEntities(initialEntity, expectedEntity, oper.type)) {
 				out << "OK\n";
-				return true;
 			} else {
 				out << "FAIL\n";
-				return false;
+				result = false;
 			}
+			continue;
 		}
 
 		auto propertyIntial		= resolveProperty(initial, initialEntity, oper.path);
 		auto propertyExpected = resolveProperty(expected, expectedEntity, oper.path);
 
 		if (
-			compareComponents(
+			compareProperty(
 				initial, 
 				propertyIntial.type, 
 				propertyIntial.ptr, 
 				propertyExpected.ptr, 
-				oper.type
+				oper.type,
+				out
 			)
 		) {
-			out << "OK\n";
-			result = true;
+			out << "\tOK\n";
 		} else {
-			out << "FAIL\n";
+			out << "\tFAIL\n";
 			result = false;
 		}
 	}
@@ -738,6 +489,7 @@ bool TestRunnerImpl::compareWorlds(
 	return result;
 }
 
+// ================================================================================================
 void TestRunnerImpl::runSystems(const flecs::world& world, const UnitTest::Systems& systems)
 {
 	for (auto& sys : systems) {

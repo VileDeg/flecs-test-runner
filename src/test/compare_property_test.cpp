@@ -30,8 +30,6 @@ protected:
 
 	void InitWorld(flecs::world& ecs) {
 		TestRunner::initialize<movement::module>(ecs);
-		// TODO: remove?
-		//TestRunner::registerTypes<movement::Speed, movement::PositionVector>(ecs);
 	}
 
 	flecs::entity AddEntity(std::optional<std::string> name = std::nullopt) {
@@ -90,7 +88,7 @@ protected:
 		auto [init, exp] = createProperties(compA, compB, propertyPath);
 
 		ASSERT_EQ(
-			tri::compareComponents(_ecs, init.type, init.ptr, exp.ptr, op),
+			tri::compareProperty(_ecs, init.type, init.ptr, exp.ptr, op),
 			comparisonResult
 		);
 	}
@@ -118,7 +116,7 @@ protected:
 		
 		ASSERT_EQ(propInitial.type, propExpected.type);
 		ASSERT_EQ(
-			tri::compareComponents(_ecs, propInitial.type, propInitial.ptr, propExpected.ptr, op),
+			tri::compareProperty(_ecs, propInitial.type, propInitial.ptr, propExpected.ptr, op),
 			comparisonResult
 		);
 	}

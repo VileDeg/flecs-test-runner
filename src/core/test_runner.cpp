@@ -8,11 +8,9 @@
 #include <algorithm>
 #include <sstream>
 
-#include "reflection.h"
 #include <test_runner/common.h>
 
 using namespace TestRunnerDetail;
-
 
 // ================================================================================================
 // TestRunner
@@ -26,28 +24,60 @@ void TestRunner::setLogLevel(LogLevel logLevel) {
 using UnitTest = TestRunnerImpl::UnitTest;
 using SystemInvocation = TestRunnerImpl::SystemInvocation;
 using TestableModule = TestRunner::TestableModule;
-struct IntFloatPair {
-	int key;
-	float value;
-};
+
+#define TEST_RUNNER_SYSTEM_NAME "TestRunner"
+#define TEST_RUNNER_INCOMPLETE_SYSTEM_NAME TEST_RUNNER_SYSTEM_NAME "Incomplete"
+
+// ================================================================================================
+template <typename Elem, typename Vector = std::vector<Elem>>
+flecs::opaque<Vector, Elem> vectorReflectionSupport(flecs::world& world) {
+	return flecs::opaque<Vector, Elem>()
+		.as_type(world.vector<Elem>())
+
+		// Forward elements of std::vector value to serializer
+		.serialize([](const flecs::serializer* s, const Vector* data) {
+		for (const auto& el : *data) {
+			s->value(el);
+		}
+		return 0;
+			})
+
+		// Return vector count
+		.count([](const Vector* data) {
+		return data->size();
+			})
+
+		// Resize contents of vector
+		.resize([](Vector* data, size_t size) {
+		data->resize(size);
+			})
+
+		// Ensure element exists, return pointer
+		.ensure_element([](Vector* data, size_t elem) {
+		if (data->size() <= elem) {
+			data->resize(elem + 1);
+		}
+
+		return &data->data()[elem];
+			});
+}
 
 // ================================================================================================
 TestRunner::TestRunner(flecs::world& world) {
 	using Operator = UnitTest::Operator;
 
-  // TODO: reflection for string and vector built-in by flecs?
+	// String
   world.component<std::string>()
-    .opaque(flecs::String) // Opaque type that maps to string
+    .opaque(flecs::String)
     .serialize([](const flecs::serializer* s, const std::string* data) {
-    const char* str = data->c_str();
-    return s->value(flecs::String, &str); // Forward to serializer
-  })
+			const char* str = data->c_str();
+			return s->value(flecs::String, &str);
+		})
     .assign_string([](std::string* data, const char* value) {
-    *data = value; // Assign new value to std::string
-  });
-
+			*data = value;
+		});
 	world.component<std::vector<std::string>>()
-		.opaque(reflection::std_vector_support<std::string>);
+		.opaque(vectorReflectionSupport<std::string>);
 
 	// Tags
   world.component<UnitTest::Ready>();
@@ -71,7 +101,7 @@ TestRunner::TestRunner(flecs::world& world) {
 		.member<Operator::Path>("path")
 		.member<OperatorType>("type");
 	world.component<std::vector<UnitTest::Operator>>()
-		.opaque(reflection::std_vector_support<UnitTest::Operator>);
+		.opaque(vectorReflectionSupport<UnitTest::Operator>);
 	world.component<SupportedOperators>()
 		.member<bool>("equals")
 		.member<bool>("cmp");
@@ -82,7 +112,7 @@ TestRunner::TestRunner(flecs::world& world) {
     .member<int>("timesToRun");
 
   world.component<std::vector<SystemInvocation>>()
-    .opaque(reflection::std_vector_support<SystemInvocation>);
+    .opaque(vectorReflectionSupport<SystemInvocation>);
 
   world.component<UnitTest>()
     .member<std::string>("name")
@@ -93,67 +123,71 @@ TestRunner::TestRunner(flecs::world& world) {
 
   world.component<TestableModule>();
 
-  world.system<UnitTest>("TestRunner")
+  world.system<UnitTest>(TEST_RUNNER_SYSTEM_NAME)
     .kind(flecs::OnUpdate)
-    .multi_threaded()
     .with<UnitTest::Ready>()
     .without<UnitTest::Executed>()
     .without<UnitTest::Incomplete>()
-    .each([this, &world](flecs::entity e, UnitTest& test) { // TODO: why need capture this?
-      try {
-				Log::info() << "Running test: " << test.name;
+    .each([this](flecs::entity e, UnitTest& test) { // TODO: why need capture this?
+			std::ostringstream ss;
+			try {
+				auto world = e.world();
+				Log::info() << "[" << TEST_RUNNER_SYSTEM_NAME << "] Running test: " << test.name;
 
 				auto status = test.validate();
 				if (status.has_value()) {
-					std::stringstream ss;
-					ss << "Failed to run test " << test.name << ": " << *status << "\n";
-					e.set<UnitTest::Executed>({ *status });
-					throw Error(ss.str());
+					std::ostringstream sse;
+					sse << "Validation failed for test " << test.name << ": " << *status << "\n";
+					throw Error(sse.str());
 				}
 
-				std::ostringstream ss;
 				if (TestRunnerImpl::runUnitTest(world, test, ss)) {
-					Log::info() << "Test PASSED";
+					ss << "[Result]: PASS";
 					e.add<UnitTest::Passed>();
+				} else {
+					ss << "[Result]: FAIL";
 				}
-				e.set<UnitTest::Executed>({ ss.str()});
-      }
-      catch (const std::runtime_error& e) {
-        Log::error() << "Error [" << __FUNCTION__ << "]: " << e.what() << "\n";
-      }
-    });
 
-  world.system<UnitTest>("TestRunnerIncomplete")
+				Log::info() << ss.str();
+			} catch (const std::runtime_error& error) {
+				ss << "Error thrown in system [" << TEST_RUNNER_SYSTEM_NAME << "]: " << error.what() << "\n";
+				Log::error() << ss.str();
+				Log::info() << "[Result]: FAIL";
+			}
+			e.set<UnitTest::Executed>({ ss.str()});
+		});
+
+  world.system<UnitTest>(TEST_RUNNER_INCOMPLETE_SYSTEM_NAME)
     .kind(flecs::OnUpdate)
-    .multi_threaded()
     .with<UnitTest::Ready>()
     .without<UnitTest::Executed>()
     .with<UnitTest::Incomplete>()
-    .each([this, &world](flecs::entity e, UnitTest& test) {
-      try {
-				Log::info() << "Running test (Incomplete): " << test.name << "\n";
+    .each([this](flecs::entity e, UnitTest& test) {
+			std::ostringstream ss;
+			try {
+				auto world = e.world();
+				Log::info() << "[" << TEST_RUNNER_INCOMPLETE_SYSTEM_NAME << "] Running test: " << test.name;
 
-				auto status = test.validate(false);
+				auto status = test.validate();
 				if (status.has_value()) {
-					std::stringstream ss;
-					ss << "Failed to run test " << test.name << ": " << *status << "\n";
-					e.set<UnitTest::Executed>({ *status });
-					//e.set<UnitTest::Incomplete>({ "" });
-					return;
-					//throw Error(ss.str());
+					std::ostringstream sse;
+					sse << "Validation failed for test " << test.name << ": " << *status << "\n";
+					throw Error(sse.str());
 				}
 
 				std::string expectedSerialized = TestRunnerImpl::runUnitTestIncomplete(world, test);
 
-				e.set<UnitTest::Executed>({ "OK" });
+				ss << "OK";
 				e.set<UnitTest::Incomplete>({ expectedSerialized });
 				e.add<UnitTest::Passed>();
 
-				Log::info() << "OK test (Incomplete): " << test.name << "\n";
-      }
-      catch (const std::runtime_error& e) {
-        Log::error() << "Error [" << __FUNCTION__ << "]: " << e.what() << "\n";
-      }
-  });
+				Log::info() << "[Result]: PASS";
+			} catch (const std::runtime_error& error) {
+				ss << "Error thrown in system [" << TEST_RUNNER_INCOMPLETE_SYSTEM_NAME << "]: " << error.what() << "\n";
+				Log::error() << ss.str();
+				Log::info() << "[Result]: FAIL";
+			}
+			e.set<UnitTest::Executed>({ ss.str() });
+	  });
 }
 

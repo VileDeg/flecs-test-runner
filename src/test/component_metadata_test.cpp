@@ -18,14 +18,10 @@ namespace aux {
 		int value;
 	};
 
-	struct NoComparisonOperatorType {
-		int value;
-	};
-
 	struct module {
 		module(flecs::world& world) {
 			world.component<AllOperatorsType>()
-				.on_equals() // this needed to register hooks
+				.on_equals()  // this needed to register hooks
 				.on_compare() // this needed to register hooks
 				.member<int>("value");
 		}
@@ -49,14 +45,8 @@ protected:
 	flecs::world _ecs;
 };
 
-//
-//using MyTypes = ::testing::Types<
-//	Vector2D, Velocity, MovementState, TransformHistory,
-//	PositionVector,
-//	PositionVectorT, PositionVectorTT
-//>;
 using MyTypes = ::testing::Types<
-	Velocity
+	Speed
 >;
 TYPED_TEST_SUITE(ComponentMetadataTest, MyTypes);
 

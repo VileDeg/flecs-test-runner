@@ -6,24 +6,17 @@ struct TestCaseParam {
 };
 
 class RunUnitTest
-	: public ::testing::Test,
-		public ::testing::WithParamInterface<TestCaseParam>
+	: public ::testing::Test
+	,	public ::testing::WithParamInterface<TestCaseParam>
 {
 protected:
 	void SetUp() override {
 		tr::setLogLevel(tr::LogLevel::TRACE);
-
 		InitWorld(_ecs);
-	}
-
-	void TearDown() override {
-		// teardown code comes here
 	}
 
 	void InitWorld(flecs::world& ecs) {
 		TestRunner::initialize<movement::module>(ecs);
-		// TODO: remove?
-		//TestRunner::registerTypes<movement::Speed, movement::PositionVector>(ecs);
 	}
 
 	flecs::world _ecs;

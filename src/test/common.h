@@ -13,7 +13,6 @@ using tri = TestRunnerImpl;
 using UnitTest = tri::UnitTest;
 
 using Operator = UnitTest::Operator;
-//using OpType = OperatorType;
 using OpType = OperatorType;
 
 static const std::string TEST_MODULE_NAME = "movement.module";
@@ -52,56 +51,3 @@ std::vector<T> MergeTests(Vecs&&... groups) {
 
 	return allCases;
 }
-
-//template <typename T>
-//std::vector<T> MergeTests(std::vector<std::vector<T>>&& groups) {
-//	std::vector<T> allCases;
-//	for (auto& group : groups) {
-//		allCases.insert(
-//			allCases.end(),
-//			std::make_move_iterator(group.begin()),
-//			std::make_move_iterator(group.end())
-//		);
-//	}
-//	return allCases;
-//}
-
-/*
-	Test:
-		EQ, LT for:
-			component (not nested)
-			array
-			vector
-			array / vector:
-				primitive property under element which is a struct
-		EQ Exception:
-				component with no "on_equals" hook
-		LT Exception:
-				component with no "on_compare" hook
-
-		Other param variations through parameterized text fixture
-		Vector/array variations through typed test
-*/
-
-/* Serialized entity:
-{
-	"name": "Initial",
-	"components": {
-	"movement.module.Speed": {
-			"value": 1.0
-		},
-		"movement.module.PositionVector": {
-			"data": [
-				{
-					"x": 1,
-					"y": 1
-				},
-				{
-					"x": 42,
-					"y": 42
-				}
-			]
-		}
-	}
-}
-*/
