@@ -11,7 +11,6 @@ FetchContent_Declare(
 FetchContent_Declare(
     modules
     GIT_REPOSITORY https://github.com/VileDeg/flecs-test-runner-modules
-    #GIT_TAG master # Use the latest version; replace with a specific tag if needed
 )
 
 # For Windows: Prevent overriding the parent project's compiler/linker settings
@@ -51,7 +50,6 @@ target_link_libraries(
   ${EXE_NAME}
   PRIVATE
     GTest::gtest_main
-    #flecs::flecs_static
     ${TEST_RUNNER_LIB_NAME}
     ${MODULES_LIB_NAME}
 )

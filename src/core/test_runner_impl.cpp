@@ -158,8 +158,10 @@ void TestRunnerImpl::runWorld(
 }
 
 // ================================================================================================
-std::vector<std::string> TestRunnerImpl::resolveModules(const flecs::world& world, const std::vector<std::string>& systemsFullPath)
-{
+std::vector<std::string> TestRunnerImpl::resolveModules(
+	const flecs::world& world, 
+	const std::vector<std::string>& systemsFullPath
+) {
 	std::vector<std::string> names;
 	for (const auto& path : systemsFullPath) {
 		auto system = getSystemByName(world, path);
@@ -191,8 +193,11 @@ std::vector<std::string> TestRunnerImpl::resolveModules(const flecs::world& worl
 }
 
 // ================================================================================================
-bool TestRunnerImpl::runUnitTest(const flecs::world& world, UnitTest& test, std::ostringstream& out)
-{
+bool TestRunnerImpl::runUnitTest(
+	const flecs::world& world, 
+	UnitTest& test, 
+	std::ostringstream& out
+) {
 	test.normalizeSystemNames();
 
 	flecs::world worldActual, worldExpected;
@@ -296,7 +301,8 @@ ResolvedProperty TestRunnerImpl::resolveProperty(
 	void* basePtr = entity.get_mut(component);
 	if (!basePtr) {
 		std::stringstream ss;
-		ss << "Component \"" << component.name() << "\" does not exist on entity \"" << entity.name() << "\"";
+		ss << "Component \"" << component.name() 
+			<< "\" does not exist on entity \"" << entity.name() << "\"";
 		throw Error(ss.str());
 	}
 
@@ -328,7 +334,8 @@ ResolvedProperty TestRunnerImpl::resolveProperty(
 
 	flecs::entity type_ent = cur.get_type();
 
-	Log::trace() << "Resolved path \"" << unmodifiedPath << "\" to property \"" << type_ent.name() << "\"";
+	Log::trace() << "Resolved path \"" 
+		<< unmodifiedPath << "\" to property \"" << type_ent.name() << "\"";
 
 	return {
 		type_ent,
@@ -400,7 +407,11 @@ static bool compareEntitiesEq(flecs::entity initial, flecs::entity expected) {
 }
 
 // ================================================================================================
-static bool compareEntities(flecs::entity initial, flecs::entity expected, OperatorType operatorType) {
+static bool compareEntities(
+	flecs::entity initial, 
+	flecs::entity expected, 
+	OperatorType operatorType
+) {
 	if (initial.id() < 1 || expected.id() < 1) {
 		return false;
 	}

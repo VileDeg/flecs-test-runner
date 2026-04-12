@@ -5,7 +5,6 @@ set(SRC_FILES
     test_runner.cpp
     test_runner_impl.h
     test_runner_impl.cpp
-    reflection.h
     include/test_runner/test_runner.h
     include/test_runner/common.h
 )

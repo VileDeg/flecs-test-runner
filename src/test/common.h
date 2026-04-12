@@ -3,7 +3,7 @@
 #include <test_runner/test_runner.h>
 #include <test_runner_impl.h>
 
-#include <modules/test.h>
+#include <modules/movement.h>
 
 using namespace movement;
 
