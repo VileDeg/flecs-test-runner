@@ -10,9 +10,7 @@
 #include <algorithm>
 #include <unordered_set>
 
-#include <string>
 #include <iostream>
-#include <algorithm>
 #include <sstream>
 
 #include <test_runner/common.h>
@@ -44,6 +42,12 @@ public:
 		std::string name;
 		int timesToRun;
 	};
+
+	// ============================================================================================
+	/**
+	* Tag to know that an entity was created during testing (by deserialization).
+	*/
+	struct TestedEntity {};
 
 	// ==============================================================================================
 	struct UnitTest {
@@ -279,18 +283,18 @@ public:
 
 	// ==============================================================================================
 	static bool compareWorlds(
-		flecs::world& initial, 
+		flecs::world& actual, 
 		flecs::world& expected, 
 		UnitTest::Operators operators,
 		std::ostream& os
 	);
 	// ==============================================================================================
 	static bool compareWorlds(
-		flecs::world& initial,
+		flecs::world& actual,
 		flecs::world& expected,
 		UnitTest::Operators operators
 	) {
-		return compareWorlds(initial, expected, operators, Log::trace());
+		return compareWorlds(actual, expected, operators, Log::trace());
 	}
 	// ==============================================================================================
 	static void runSystems(const flecs::world& world, const UnitTest::Systems& systems);

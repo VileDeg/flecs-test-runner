@@ -83,8 +83,8 @@ enum class OperatorType {
 * Also add to all primitive value components.
 */
 struct SupportedOperators {
-	bool equals;
-	bool cmp;
+	bool equals = false;
+	bool cmp = false;
 };
 
 // ================================================================================================

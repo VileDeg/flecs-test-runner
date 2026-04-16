@@ -6,15 +6,14 @@
 #include <functional>
 #include <optional>
 #include <map>
+#include <unordered_set>
 #include <stdexcept>
 #include <algorithm>
 
 #include <charconv>
 #include <system_error>
 
-
 #include <iostream>
-#include <algorithm>
 #include <sstream>
 
 #include "test_runner_impl.h"
@@ -137,6 +136,7 @@ void TestRunnerImpl::applyConfiguration(
 	for (auto& serializedEntity : configuration) {
 		auto entity = world.entity();
 		entity.from_json(serializedEntity.c_str());
+		entity.add<TestedEntity>();
 	}
 }
 
@@ -225,7 +225,7 @@ std::string TestRunnerImpl::runUnitTestIncomplete(const flecs::world& world, Uni
 
 	runWorld(worldActual, World::Actual, test, importer);
 
-	return worldActual.to_json();
+	return worldActual.to_json().c_str();
 }
 
 // ================================================================================================
@@ -298,7 +298,7 @@ ResolvedProperty TestRunnerImpl::resolveProperty(
 ) {
 	std::string unmodifiedPath = propertyPath;
 	
-	void* basePtr = entity.get_mut(component);
+	void* basePtr = entity.try_get_mut(component);
 	if (!basePtr) {
 		std::stringstream ss;
 		ss << "Component \"" << component.name() 
@@ -403,6 +403,12 @@ bool TestRunnerImpl::compareProperty(
 // ================================================================================================
 // TODO: find more efficient way to compare
 static bool compareEntitiesEq(flecs::entity initial, flecs::entity expected) {
+	// TODO: exclude that component from being serialized instead of having to delete it
+	initial.remove<TestRunnerImpl::TestedEntity>();
+	expected.remove<TestRunnerImpl::TestedEntity>();
+
+	//Log::trace() << "Initial entity:\n\n" << initial.to_json();
+	//Log::trace() << "Expected entity:\n\n" << expected.to_json();
 	return initial.to_json() == expected.to_json();
 }
 
@@ -433,56 +439,55 @@ static bool compareEntities(
 
 // ================================================================================================
 bool TestRunnerImpl::compareWorlds(
-	flecs::world& initial, 
+	flecs::world& actual, 
 	flecs::world& expected, 
 	TestRunnerImpl::UnitTest::Operators operators,
 	std::ostream& out
 ) {
-	// TODO: add setting to compare only until first failure.
-
-	if (operators.empty()) {
-		out << "Nothing to compare";
-		return false;
-	}
-
-	auto getEntity = [&](flecs::world& ecs, const std::string& name) -> flecs::entity {
-			auto entity = ecs.lookup(name.c_str());
-			if (entity == 0) {
-				Log::warn() << "Comparison failed: Enttity with name " << name << " not found\n";
-			}
-			return entity;
-		};
-
+	// TODO: add setting to compare only until first failure. Could greatly speed up the process
 	bool result = true;
+	std::unordered_set<std::string> expectedEntities;
+
+	auto q = expected.query_builder().with<TestedEntity>().build();
+	q.each([&](flecs::entity e) {
+			expectedEntities.emplace(e.name().c_str());
+		});
 
 	for (auto& oper : operators) {
-		out << "Comparison for:\n\t" << oper << "\n\t";
+		out << "Comparison for:\n\t" << oper << "\n";
 
 		std::string entityName = oper.path.popSegment();
 		if (entityName.empty()) {
-			out << "Operator path is empty";
+			out << "\tOperator path is empty. Skipping...";
 			continue;
 		}
 
-		auto initialEntity = getEntity(initial, entityName);
-		auto expectedEntity = getEntity(expected, entityName);
+		auto initialEntity = actual.lookup(entityName.c_str());
+		if (initialEntity == 0) {
+			out << "\tActual configuration missing entity with name " << entityName << "\n";
+		}
+		auto expectedEntity = expected.lookup(entityName.c_str());
+		if (expectedEntity == 0) {
+			// Internal error! Not supposed to happen, otherwise how did this operator appear?
+			out << "\tInternal Error: Expected configuration missing entity with name " << entityName << "\n";
+		}
 
 		if (!oper.path.isAnySegment()) {
 			if (compareEntities(initialEntity, expectedEntity, oper.type)) {
-				out << "OK\n";
+				out << "\tOK\n";
 			} else {
-				out << "FAIL\n";
+				out << "\tFAIL\n";
 				result = false;
 			}
 			continue;
 		}
 
-		auto propertyIntial		= resolveProperty(initial, initialEntity, oper.path);
+		auto propertyIntial		= resolveProperty(actual, initialEntity, oper.path);
 		auto propertyExpected = resolveProperty(expected, expectedEntity, oper.path);
 
 		if (
 			compareProperty(
-				initial, 
+				actual, 
 				propertyIntial.type, 
 				propertyIntial.ptr, 
 				propertyExpected.ptr, 
@@ -496,6 +501,16 @@ bool TestRunnerImpl::compareWorlds(
 			result = false;
 		}
 	}
+
+	// TODO: use a setting to enable/disable this check
+	// Check if the required entities got deleted
+	q = actual.query_builder().with<TestedEntity>().build();
+	q.each([&](flecs::entity e) {
+			if (!expectedEntities.count(e.name().c_str())) {
+				out << "Unexpected entity in actual configuration " << e.name() << "\n";
+				result = false;
+			}
+		});
 
 	return result;
 }

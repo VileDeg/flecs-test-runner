@@ -1,3 +1,4 @@
 - Fix all TODO comments.
 - Make a non-gui app that would just accept folder/file with tests and output test results.
 - How to prevent pointers/referencies from being used in components?
+- Allow matching entity name by regex (not the exact name)

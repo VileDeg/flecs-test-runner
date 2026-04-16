@@ -67,7 +67,7 @@ TestRunner::TestRunner(flecs::world& world) {
 	using Operator = UnitTest::Operator;
 
 	// String
-  world.component<std::string>()
+	world.component<std::string>()
     .opaque(flecs::String)
     .serialize([](const flecs::serializer* s, const std::string* data) {
 			const char* str = data->c_str();
@@ -79,7 +79,10 @@ TestRunner::TestRunner(flecs::world& world) {
 	world.component<std::vector<std::string>>()
 		.opaque(vectorReflectionSupport<std::string>);
 
+
 	// Tags
+	world.component<TestRunnerImpl::TestedEntity>();
+
   world.component<UnitTest::Ready>();
   world.component<UnitTest::Passed>();
   world.component<UnitTest::Executed>()
@@ -168,7 +171,7 @@ TestRunner::TestRunner(flecs::world& world) {
 				auto world = e.world();
 				Log::info() << "[" << TEST_RUNNER_INCOMPLETE_SYSTEM_NAME << "] Running test: " << test.name;
 
-				auto status = test.validate();
+				auto status = test.validate(false);
 				if (status.has_value()) {
 					std::ostringstream sse;
 					sse << "Validation failed for test " << test.name << ": " << *status << "\n";

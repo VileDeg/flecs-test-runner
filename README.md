@@ -68,6 +68,10 @@ Or, if you don't want to modify your modules' source code:
 
 - Use `TestRunner::registerOperators` function to list all the components manually. Operators metadata will be registered for each individual components this way.
 
+--------------
+Defining systems:
+- When defining a system that creates/removes entities/components make sure to mark the system as `immediate` (see Flecs docs for details). Otherwise the effect of structural changes will not be immediately visible preventing them from being possible to test.
+
 ## Build (C++)
 
 `CMake` must be installed in order to build.
@@ -79,3 +83,16 @@ cmake -S . -B build/
 ```
 
 Output is a **static library**.
+
+## Known limitations
+
+- Entity names in the test configurations must be unique.   
+  - The names are used to define comparison operator paths, thus need to be unique.
+
+## Future improvements
+
+- Fix all TODO comments.
+- Make a non-gui app that would just accept folder/file with tests and output test results.
+- How to prevent pointers/referencies from being used in components?
+- Allow matching entity name by regex (not the exact name)
+

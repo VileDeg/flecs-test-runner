@@ -122,7 +122,10 @@ private:
 			.build()
 			.each([&](flecs::entity e) {
 					const ecs_type_info_t* ti = ecs_get_type_info(world, e);
-					e.set<SupportedOperators>(getSupportedOperatorsFromHooks(*ti));
+					e.set<SupportedOperators>(ti 
+						? getSupportedOperatorsFromHooks(*ti) 
+						: SupportedOperators{}
+					);
 				});
 
 		// Execute all queued structural changes
