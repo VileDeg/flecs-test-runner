@@ -132,7 +132,7 @@ TestRunner::TestRunner(flecs::world& world) {
     .without<UnitTest::Executed>()
     .without<UnitTest::Incomplete>()
     .each([this](flecs::entity e, UnitTest& test) { // TODO: why need capture this?
-			std::ostringstream ss;
+			std::shared_ptr<std::ostringstream> ss;
 			try {
 				auto world = e.world();
 				Log::info() << "[" << TEST_RUNNER_SYSTEM_NAME << "] Running test: " << test.name;
@@ -145,19 +145,19 @@ TestRunner::TestRunner(flecs::world& world) {
 				}
 
 				if (TestRunnerImpl::runUnitTest(world, test, ss)) {
-					ss << "[Result]: PASS";
+					*ss << "[Result]: PASS";
 					e.add<UnitTest::Passed>();
 				} else {
-					ss << "[Result]: FAIL";
+					*ss << "[Result]: FAIL";
 				}
 
-				Log::info() << ss.str();
+				Log::info() << ss->str();
 			} catch (const std::runtime_error& error) {
-				ss << "Error thrown in system [" << TEST_RUNNER_SYSTEM_NAME << "]: " << error.what() << "\n";
-				Log::error() << ss.str();
+				*ss << "Error thrown in system [" << TEST_RUNNER_SYSTEM_NAME << "]: " << error.what() << "\n";
+				Log::error() << ss->str();
 				Log::info() << "[Result]: FAIL";
 			}
-			e.set<UnitTest::Executed>({ ss.str()});
+			e.set<UnitTest::Executed>({ ss->str()});
 		});
 
   world.system<UnitTest>(TEST_RUNNER_INCOMPLETE_SYSTEM_NAME)
@@ -166,7 +166,7 @@ TestRunner::TestRunner(flecs::world& world) {
     .without<UnitTest::Executed>()
     .with<UnitTest::Incomplete>()
     .each([this](flecs::entity e, UnitTest& test) {
-			std::ostringstream ss;
+			std::shared_ptr<std::ostringstream> ss;
 			try {
 				auto world = e.world();
 				Log::info() << "[" << TEST_RUNNER_INCOMPLETE_SYSTEM_NAME << "] Running test: " << test.name;
@@ -178,19 +178,19 @@ TestRunner::TestRunner(flecs::world& world) {
 					throw Error(sse.str());
 				}
 
-				std::string expectedSerialized = TestRunnerImpl::runUnitTestIncomplete(world, test);
+				std::string expectedSerialized = TestRunnerImpl::runUnitTestIncomplete(world, test, ss);
 
-				ss << "OK";
+				*ss << "OK";
 				e.set<UnitTest::Incomplete>({ expectedSerialized });
 				e.add<UnitTest::Passed>();
 
 				Log::info() << "[Result]: PASS";
 			} catch (const std::runtime_error& error) {
-				ss << "Error thrown in system [" << TEST_RUNNER_INCOMPLETE_SYSTEM_NAME << "]: " << error.what() << "\n";
-				Log::error() << ss.str();
+				*ss << "Error thrown in system [" << TEST_RUNNER_INCOMPLETE_SYSTEM_NAME << "]: " << error.what() << "\n";
+				Log::error() << ss->str();
 				Log::info() << "[Result]: FAIL";
 			}
-			e.set<UnitTest::Executed>({ ss.str() });
+			e.set<UnitTest::Executed>({ ss->str() });
 	  });
 }
 

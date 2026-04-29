@@ -31,6 +31,7 @@ class TestRunnerImpl {
 public:
 	using TypeImporterMap =
 		std::vector<WorldCallback>;
+	using OstreamPtr = std::shared_ptr<std::ostream>;
 
 	// ==============================================================================================
 	struct Error : public AutoPrefixedError<Error> {
@@ -214,15 +215,8 @@ public:
 		// ============================================================================================
 		std::vector<std::string> getSystemNames() const;
 	};
-
 	using WorldComparisonResult = std::unordered_map<UnitTest::Operator, bool>;
-	
-	// ==============================================================================================
-	template <typename... Args>
-	static void addTestEntity(flecs::world& world, const char* name, Args&&... args) {
-		world.entity(name)
-			.set<UnitTest>({ std::forward<Args>(args)... });
-	}
+
 	// ==============================================================================================
 	enum class World {
 		Actual,
@@ -249,7 +243,9 @@ public:
 	* TODO
 	*/
 	static ResolvedProperty resolveProperty(
-		flecs::world& ecs, flecs::entity entity, UnitTest::Operator::Path path
+		flecs::world& ecs, 
+		flecs::entity entity, 
+		UnitTest::Operator::Path path
 	);
 
 	// ==============================================================================================
@@ -258,7 +254,10 @@ public:
 	* @param propertyPath Path of a property inside a component definiton.
 	*/
 	static ResolvedProperty resolveProperty(
-		flecs::world& ecs, flecs::entity entity, flecs::entity component, UnitTest::Operator::Path propertyPath
+		flecs::world& ecs, 
+		flecs::entity entity, 
+		flecs::entity component, 
+		UnitTest::Operator::Path propertyPath
 	);
 
 	//  =============================================================================================
@@ -267,37 +266,19 @@ public:
 		ecs_entity_t componentId,
 		const void* lhs,
 		const void* rhs,
-		OperatorType operatorType,
-		std::ostream& os
-	);
-	// ==============================================================================================
-	static bool compareProperty(
-		ecs_world_t* world,
-		ecs_entity_t componentId,
-		const void* lhs,
-		const void* rhs,
 		OperatorType operatorType
-	) {
-		return compareProperty(world, componentId, lhs, rhs, operatorType, Log::trace());
-	}
-
+	);
+	
 	// ==============================================================================================
 	static bool compareWorlds(
 		flecs::world& actual, 
 		flecs::world& expected, 
-		UnitTest::Operators operators,
-		std::ostream& os
-	);
-	// ==============================================================================================
-	static bool compareWorlds(
-		flecs::world& actual,
-		flecs::world& expected,
 		UnitTest::Operators operators
-	) {
-		return compareWorlds(actual, expected, operators, Log::trace());
-	}
+	);
+	
 	// ==============================================================================================
 	static void runSystems(const flecs::world& world, const UnitTest::Systems& systems);
+	
 	// ==============================================================================================
 	static void runWorld(
 		flecs::world& world, 
@@ -305,17 +286,20 @@ public:
 		const UnitTest& test, 
 		const ModuleImporter& importer
 	);
+	
 	// ==============================================================================================
-	static bool runUnitTest(const flecs::world& world, UnitTest& test, std::ostringstream& out);
-	static bool runUnitTest(const flecs::world& world, UnitTest& test) {
-		std::ostringstream dummy;
-		return runUnitTest(world, test, dummy);
-	}
+	static bool runUnitTest(const flecs::world& world, UnitTest& test, OstreamPtr out = nullptr);
+	
 	// ==============================================================================================
 	/**
 	* Returns serialized world 
 	*/
-	static std::string runUnitTestIncomplete(const flecs::world& world, UnitTest& test);
+	static std::string runUnitTestIncomplete(
+		const flecs::world& world, 
+		UnitTest& test, 
+		OstreamPtr out = nullptr
+	);
+	
 	// ==============================================================================================
 	static void applyConfiguration(
 		flecs::world& world, UnitTest::WorldConfiguration configuration
@@ -326,6 +310,11 @@ public:
 		const flecs::world& world, const std::string& systemName
 	);
 
-
+private:
+	static std::ostream& out() {
+		return _out ? *_out : _dummy;
+	}
+	inline static std::ostream _dummy{ nullptr };
+	inline static OstreamPtr _out;
 };
 

@@ -196,8 +196,9 @@ std::vector<std::string> TestRunnerImpl::resolveModules(
 bool TestRunnerImpl::runUnitTest(
 	const flecs::world& world, 
 	UnitTest& test, 
-	std::ostringstream& out
+	OstreamPtr out
 ) {
+	_out = out;
 	test.normalizeSystemNames();
 
 	flecs::world worldActual, worldExpected;
@@ -209,12 +210,13 @@ bool TestRunnerImpl::runUnitTest(
 	runWorld(worldActual, World::Actual, test, importer);
 	runWorld(worldExpected, World::Expected, test, importer);
 	
-	return compareWorlds(worldActual, worldExpected, test.operators, out);
+	return compareWorlds(worldActual, worldExpected, test.operators);
 }
 
 // ================================================================================================
-std::string TestRunnerImpl::runUnitTestIncomplete(const flecs::world& world, UnitTest& test)
+std::string TestRunnerImpl::runUnitTestIncomplete(const flecs::world& world, UnitTest& test, OstreamPtr out)
 {
+	_out = out;
 	test.normalizeSystemNames();
 
 	flecs::world worldActual;
@@ -300,10 +302,8 @@ ResolvedProperty TestRunnerImpl::resolveProperty(
 	
 	void* basePtr = entity.try_get_mut(component);
 	if (!basePtr) {
-		std::stringstream ss;
-		ss << "Component \"" << component.name() 
+		out() << "Component \"" << component.name()
 			<< "\" does not exist on entity \"" << entity.name() << "\"";
-		throw Error(ss.str());
 	}
 
 	flecs::cursor cur(ecs, component, basePtr);
@@ -313,7 +313,7 @@ ResolvedProperty TestRunnerImpl::resolveProperty(
 		segment = propertyPath.popSegment();
 
 		if (cur.push()) {
-			throw Error("Failed to push into cursor scope");
+			throw Error("Failed to push into member scope");
 		}
 
 		int index = getPositiveInteger(segment);
@@ -327,7 +327,7 @@ ResolvedProperty TestRunnerImpl::resolveProperty(
 			}
 		} else {
 			if (cur.member(segment.c_str())) {
-				throw Error("Cursor member failed");
+				out() << "Member \"" << segment << "\" does not exist\n";
 			}
 		}
 	}
@@ -349,8 +349,7 @@ bool TestRunnerImpl::compareProperty(
 	ecs_entity_t componentId, 
 	const void* lhs, 
 	const void* rhs,
-	OperatorType operatorType,
-	std::ostream& os
+	OperatorType operatorType
 ) {
 	const ecs_type_info_t* ti = ecs_get_type_info(world, componentId);
 
@@ -394,7 +393,7 @@ bool TestRunnerImpl::compareProperty(
 			return runCmp() >= 0;
 		}
 	} catch (const Error& e) {
-		os << e.what();
+		out() << e.what();
 	}
 
 	return false;
@@ -407,8 +406,6 @@ static bool compareEntitiesEq(flecs::entity initial, flecs::entity expected) {
 	initial.remove<TestRunnerImpl::TestedEntity>();
 	expected.remove<TestRunnerImpl::TestedEntity>();
 
-	//Log::trace() << "Initial entity:\n\n" << initial.to_json();
-	//Log::trace() << "Expected entity:\n\n" << expected.to_json();
 	return initial.to_json() == expected.to_json();
 }
 
@@ -441,8 +438,7 @@ static bool compareEntities(
 bool TestRunnerImpl::compareWorlds(
 	flecs::world& actual, 
 	flecs::world& expected, 
-	TestRunnerImpl::UnitTest::Operators operators,
-	std::ostream& out
+	TestRunnerImpl::UnitTest::Operators operators
 ) {
 	// TODO: add setting to compare only until first failure. Could greatly speed up the process
 	bool result = true;
@@ -454,29 +450,29 @@ bool TestRunnerImpl::compareWorlds(
 		});
 
 	for (auto& oper : operators) {
-		out << "Comparison for:\n\t" << oper << "\n";
+		out() << "Comparison for:\n\t" << oper << "\n";
 
 		std::string entityName = oper.path.popSegment();
 		if (entityName.empty()) {
-			out << "\tOperator path is empty. Skipping...";
+			out() << "\tOperator path is empty. Skipping...";
 			continue;
 		}
 
 		auto initialEntity = actual.lookup(entityName.c_str());
 		if (initialEntity == 0) {
-			out << "\tActual configuration missing entity with name " << entityName << "\n";
+			out() << "\tActual configuration missing entity with name " << entityName << "\n";
 		}
 		auto expectedEntity = expected.lookup(entityName.c_str());
 		if (expectedEntity == 0) {
 			// Internal error! Not supposed to happen, otherwise how did this operator appear?
-			out << "\tInternal Error: Expected configuration missing entity with name " << entityName << "\n";
+			out() << "\tInternal Error: Expected configuration missing entity with name " << entityName << "\n";
 		}
 
 		if (!oper.path.isAnySegment()) {
 			if (compareEntities(initialEntity, expectedEntity, oper.type)) {
-				out << "\tOK\n";
+				out() << "\tOK\n";
 			} else {
-				out << "\tFAIL\n";
+				out() << "\tFAIL\n";
 				result = false;
 			}
 			continue;
@@ -491,13 +487,12 @@ bool TestRunnerImpl::compareWorlds(
 				propertyIntial.type, 
 				propertyIntial.ptr, 
 				propertyExpected.ptr, 
-				oper.type,
-				out
+				oper.type
 			)
 		) {
-			out << "\tOK\n";
+			out() << "\tOK\n";
 		} else {
-			out << "\tFAIL\n";
+			out() << "\tFAIL\n";
 			result = false;
 		}
 	}
@@ -507,7 +502,7 @@ bool TestRunnerImpl::compareWorlds(
 	q = actual.query_builder().with<TestedEntity>().build();
 	q.each([&](flecs::entity e) {
 			if (!expectedEntities.count(e.name().c_str())) {
-				out << "Unexpected entity in actual configuration " << e.name() << "\n";
+				out() << "Unexpected entity in actual configuration " << e.name() << "\n";
 				result = false;
 			}
 		});
