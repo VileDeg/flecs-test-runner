@@ -131,8 +131,8 @@ TestRunner::TestRunner(flecs::world& world) {
     .with<UnitTest::Ready>()
     .without<UnitTest::Executed>()
     .without<UnitTest::Incomplete>()
-    .each([this](flecs::entity e, UnitTest& test) { // TODO: why need capture this?
-			std::shared_ptr<std::ostringstream> ss;
+    .each([](flecs::entity e, UnitTest& test) {
+			std::shared_ptr<std::ostringstream> ss = std::make_shared<std::ostringstream>();
 			try {
 				auto world = e.world();
 				Log::info() << "[" << TEST_RUNNER_SYSTEM_NAME << "] Running test: " << test.name;
@@ -165,8 +165,8 @@ TestRunner::TestRunner(flecs::world& world) {
     .with<UnitTest::Ready>()
     .without<UnitTest::Executed>()
     .with<UnitTest::Incomplete>()
-    .each([this](flecs::entity e, UnitTest& test) {
-			std::shared_ptr<std::ostringstream> ss;
+    .each([](flecs::entity e, UnitTest& test) {
+			std::shared_ptr<std::ostringstream> ss = std::make_shared<std::ostringstream>();
 			try {
 				auto world = e.world();
 				Log::info() << "[" << TEST_RUNNER_INCOMPLETE_SYSTEM_NAME << "] Running test: " << test.name;
@@ -180,7 +180,7 @@ TestRunner::TestRunner(flecs::world& world) {
 
 				std::string expectedSerialized = TestRunnerImpl::runUnitTestIncomplete(world, test, ss);
 
-				*ss << "OK";
+				*ss << "Incomplete OK";
 				e.set<UnitTest::Incomplete>({ expectedSerialized });
 				e.add<UnitTest::Passed>();
 
