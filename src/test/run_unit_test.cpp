@@ -159,8 +159,9 @@ TEST_P(RunUnitTest, Success) {
 	const auto& param = GetParam();
 	UnitTest test = param.test;
 
+	tri impl;
 	ASSERT_EQ(
-		tri::runUnitTest(_ecs, test),
+		impl.runUnitTest(_ecs, test),
 		param.result
 	);
 }

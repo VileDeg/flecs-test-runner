@@ -1,14 +1,9 @@
 #pragma once
 
 #include <test_runner/test_runner.h>
-#include "test_runner_impl.h"
-
-#include <string>
-#include <iostream>
-#include <algorithm>
-#include <sstream>
-
 #include <test_runner/common.h>
+
+#include "test_runner_impl.h"
 
 using namespace TestRunnerDetail;
 
@@ -28,6 +23,14 @@ using TestableModule = TestRunner::TestableModule;
 #define TEST_RUNNER_SYSTEM_NAME "TestRunner"
 #define TEST_RUNNER_INCOMPLETE_SYSTEM_NAME TEST_RUNNER_SYSTEM_NAME "Incomplete"
 
+[[nodiscard]] static std::shared_ptr<RunTestProfiler::Probe> makeProfileScopeProbe(
+	const std::string& testName
+) {
+	return RunTestProfiler::isEnabled()
+		? std::make_shared<RunTestProfiler::Probe>(testName)
+		: nullptr;
+}
+
 // ================================================================================================
 template <typename Elem, typename Vector = std::vector<Elem>>
 flecs::opaque<Vector, Elem> vectorReflectionSupport(flecs::world& world) {
@@ -36,29 +39,29 @@ flecs::opaque<Vector, Elem> vectorReflectionSupport(flecs::world& world) {
 
 		// Forward elements of std::vector value to serializer
 		.serialize([](const flecs::serializer* s, const Vector* data) {
-		for (const auto& el : *data) {
-			s->value(el);
-		}
-		return 0;
+				for (const auto& el : *data) {
+					s->value(el);
+				}
+				return 0;
 			})
 
 		// Return vector count
 		.count([](const Vector* data) {
-		return data->size();
+				return data->size();
 			})
 
 		// Resize contents of vector
 		.resize([](Vector* data, size_t size) {
-		data->resize(size);
+				data->resize(size);
 			})
 
 		// Ensure element exists, return pointer
 		.ensure_element([](Vector* data, size_t elem) {
-		if (data->size() <= elem) {
-			data->resize(elem + 1);
-		}
+				if (data->size() <= elem) {
+					data->resize(elem + 1);
+				}
 
-		return &data->data()[elem];
+				return &data->data()[elem];
 			});
 }
 
@@ -127,11 +130,14 @@ TestRunner::TestRunner(flecs::world& world) {
   world.component<TestableModule>();
 
   world.system<UnitTest>(TEST_RUNNER_SYSTEM_NAME)
+		.multi_threaded()
     .kind(flecs::OnUpdate)
     .with<UnitTest::Ready>()
     .without<UnitTest::Executed>()
     .without<UnitTest::Incomplete>()
     .each([](flecs::entity e, UnitTest& test) {
+			auto probe = makeProfileScopeProbe(test.name);
+
 			std::shared_ptr<std::ostringstream> ss = std::make_shared<std::ostringstream>();
 			try {
 				auto world = e.world();
@@ -144,7 +150,8 @@ TestRunner::TestRunner(flecs::world& world) {
 					throw Error(sse.str());
 				}
 
-				if (TestRunnerImpl::runUnitTest(world, test, ss)) {
+				TestRunnerImpl impl;
+				if (impl.runUnitTest(world, test, ss)) {
 					*ss << "[Result]: PASS";
 					e.add<UnitTest::Passed>();
 				} else {
@@ -161,6 +168,7 @@ TestRunner::TestRunner(flecs::world& world) {
 		});
 
   world.system<UnitTest>(TEST_RUNNER_INCOMPLETE_SYSTEM_NAME)
+		.multi_threaded()
     .kind(flecs::OnUpdate)
     .with<UnitTest::Ready>()
     .without<UnitTest::Executed>()
@@ -178,7 +186,8 @@ TestRunner::TestRunner(flecs::world& world) {
 					throw Error(sse.str());
 				}
 
-				std::string expectedSerialized = TestRunnerImpl::runUnitTestIncomplete(world, test, ss);
+				TestRunnerImpl impl;
+				std::string expectedSerialized = impl.runUnitTestIncomplete(world, test, ss);
 
 				*ss << "Incomplete OK";
 				e.set<UnitTest::Incomplete>({ expectedSerialized });

@@ -20,6 +20,9 @@ public:
 	using SupportedOperators = TestRunnerDetail::SupportedOperators;
 	using OperatorType			 = TestRunnerDetail::OperatorType;
 	using ModuleImporterMap	 = TestRunnerDetail::ModuleImporterMap;
+	using RunTestProfiler		 = TestRunnerDetail::RunTestProfiler;
+
+	inline static constexpr int DEFAULT_NUM_THREADS = 8;
 
 	// ==============================================================================================
 	struct Error : public TestRunnerDetail::AutoPrefixedError<Error> {
@@ -39,10 +42,18 @@ public:
 	// ==============================================================================================
 	// Can pass modules to register
 	template <typename... Ts>
-	static void initialize(flecs::world& world) {
-		// Register test runner itself if not registered
+	static void initialize(
+		flecs::world& world, 
+		int numThreads = DEFAULT_NUM_THREADS, 
+		std::optional<int> profilingBatchSize = std::nullopt
+	) {
+		world.set_threads(numThreads);
 		world.import<TestRunner>();
 		registerModules<Ts...>(world);
+
+		if (profilingBatchSize.has_value()) {
+			RunTestProfiler::init(*profilingBatchSize);
+		}
 	}
 
 	// ==============================================================================================

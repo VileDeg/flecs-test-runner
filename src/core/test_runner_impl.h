@@ -235,14 +235,17 @@ public:
 	}
 
 	// ==============================================================================================
-	static std::vector<std::string> resolveModules(const flecs::world& world, const std::vector<std::string>& systemsFullPath);
+	static std::vector<std::string> resolveModules(
+		const flecs::world& world, 
+		const std::vector<std::string>& systemsFullPath
+	);
 
 	// ==============================================================================================
 	/**
 	* Expect path to include component name (first segment).
 	* TODO
 	*/
-	static ResolvedProperty resolveProperty(
+	ResolvedProperty resolveProperty(
 		flecs::world& ecs, 
 		flecs::entity entity, 
 		UnitTest::Operator::Path path
@@ -253,7 +256,7 @@ public:
 	* TODO
 	* @param propertyPath Path of a property inside a component definiton.
 	*/
-	static ResolvedProperty resolveProperty(
+	ResolvedProperty resolveProperty(
 		flecs::world& ecs, 
 		flecs::entity entity, 
 		flecs::entity component, 
@@ -261,7 +264,7 @@ public:
 	);
 
 	//  =============================================================================================
-	static bool compareProperty(
+	bool compareProperty(
 		ecs_world_t* world,
 		ecs_entity_t componentId,
 		const void* lhs,
@@ -270,7 +273,7 @@ public:
 	);
 	
 	// ==============================================================================================
-	static bool compareWorlds(
+	bool compareWorlds(
 		flecs::world& actual, 
 		flecs::world& expected, 
 		UnitTest::Operators operators
@@ -288,13 +291,13 @@ public:
 	);
 	
 	// ==============================================================================================
-	static bool runUnitTest(const flecs::world& world, UnitTest& test, OstreamPtr out = nullptr);
+	bool runUnitTest(const flecs::world& world, UnitTest& test, OstreamPtr out = nullptr);
 	
 	// ==============================================================================================
 	/**
 	* Returns serialized world 
 	*/
-	static std::string runUnitTestIncomplete(
+	std::string runUnitTestIncomplete(
 		const flecs::world& world, 
 		UnitTest& test, 
 		OstreamPtr out = nullptr
@@ -311,10 +314,10 @@ public:
 	);
 
 private:
-	static std::ostream& out() {
+	std::ostream& out() {
 		return _out ? *_out : _dummy;
 	}
-	inline static std::ostream _dummy{ nullptr };
-	inline static OstreamPtr _out;
+	std::ostream _dummy{ nullptr };
+	OstreamPtr _out;
 };
 

@@ -52,8 +52,8 @@ protected:
 
 	using PropertyPair = std::pair<ResolvedProperty, ResolvedProperty>;
 
-	ResolvedProperty resolveProperty(const flecs::entity& entity, const std::string& propertyPath) {
-		return tri::resolveProperty(_ecs, entity, tri::getComponentByName(_ecs, COMP_NAME), propertyPath);
+	ResolvedProperty resolveProperty(tri& impl, const flecs::entity& entity, const std::string& propertyPath) {
+		return impl.resolveProperty(_ecs, entity, tri::getComponentByName(_ecs, COMP_NAME), propertyPath);
 	}
 
 	PropertyPair createProperties(
@@ -64,8 +64,9 @@ protected:
 		auto a = AddEntity(compA);
 		auto b = AddEntity(compB);
 
-		ResolvedProperty propA = resolveProperty(a, propertyPath);
-		ResolvedProperty propB = resolveProperty(b, propertyPath);
+		tri impl;
+		ResolvedProperty propA = resolveProperty(impl, a, propertyPath);
+		ResolvedProperty propB = resolveProperty(impl, b, propertyPath);
 
 		return { propA, propB };
 	}
@@ -87,8 +88,10 @@ protected:
 	) {
 		auto [init, exp] = createProperties(compA, compB, propertyPath);
 
+		tri impl;
+
 		ASSERT_EQ(
-			tri::compareProperty(_ecs, init.type, init.ptr, exp.ptr, op),
+			impl.compareProperty(_ecs, init.type, init.ptr, exp.ptr, op),
 			comparisonResult
 		);
 	}
@@ -109,14 +112,15 @@ protected:
 
 		runSystems(systems);
 
-		ResolvedProperty propInitial = resolveProperty(a, propertyPath);
+		tri impl;
+		ResolvedProperty propInitial = resolveProperty(impl, a, propertyPath);
 
 		auto b = AddEntity(expected);
-		ResolvedProperty propExpected = resolveProperty(b, propertyPath);
-		
+		ResolvedProperty propExpected = resolveProperty(impl, b, propertyPath);
+
 		ASSERT_EQ(propInitial.type, propExpected.type);
 		ASSERT_EQ(
-			tri::compareProperty(_ecs, propInitial.type, propInitial.ptr, propExpected.ptr, op),
+			impl.compareProperty(_ecs, propInitial.type, propInitial.ptr, propExpected.ptr, op),
 			comparisonResult
 		);
 	}

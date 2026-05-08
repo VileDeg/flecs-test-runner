@@ -7,9 +7,12 @@
 #include <stdexcept>
 #include <algorithm>
 #include <iostream>
-
+#include <chrono>
 #include <type_traits>
 #include <sstream>
+#include <fstream>
+#include <ctime>
+#include <iomanip>
 
 #include <flecs.h>
 
@@ -149,6 +152,82 @@ public:
 
 private:
 	inline static Level _logLevel = Level::WARN;
+};
+
+// ================================================================================================
+class RunTestProfiler {
+public:
+	using Clock = std::chrono::steady_clock;
+
+	struct Probe {
+		std::string name;
+		Clock::time_point start;
+
+		Probe(std::string testName)
+			: name(std::move(testName)), start(Clock::now()) {}
+
+		~Probe() {
+			auto end = Clock::now();
+			std::chrono::duration<double, std::micro> elapsed = end - start;
+			RunTestProfiler::record(name, elapsed.count());
+		}
+	};
+
+	static void init(size_t n) {
+		_targetCount = n;
+		_results.clear();
+		_results.reserve(n);
+		_isEnabled = true;
+	}
+
+	static bool isEnabled() {
+		return _isEnabled;
+	}
+
+private:
+	using TimePerTestMap = std::unordered_map<std::string, double>;
+	static inline TimePerTestMap _results;
+	static inline size_t _targetCount = 0;
+	static inline bool _isEnabled = false;
+
+	static void record(const std::string& name, double duration) {
+		_results[name] = duration;
+
+		//std::cout << "\nTest Name,Duration (ns)\n";
+		//std::cout << name + "," + std::to_string(duration) + "\n";
+
+		if (_results.size() == _targetCount) {
+			generateReport();
+		}
+	}
+
+	static void generateReport() {
+		auto now = std::time(nullptr);
+		auto* tm = std::localtime(&now);
+		char ts[32];
+		std::strftime(ts, sizeof(ts), "%H-%M-%S_%d_%m", tm);
+
+		std::string filename = "perf_" + std::to_string(_targetCount) + "_tests_" + std::string(ts) + ".csv";
+		std::ofstream file(filename);
+
+		std::string header = "Test Name,Duration (us)\n";
+		std::string body;
+		for (const auto& [name, duration] : _results) {
+			body += name + "," + std::to_string(duration) + "\n";
+		}
+
+		if (file.is_open()) {
+			file << header << body;
+			file.close();
+		}
+
+		_results.clear();
+
+		std::cout << "\n--- PROFILER REACHED " << _targetCount << " TEST INVOCATIONS ---\n";
+		std::cout << "File saved: " << filename << "\n";
+		std::cout << header << body;
+		std::cout << "-----------------------------------------------\n" << std::endl;
+	}
 };
 
 }
