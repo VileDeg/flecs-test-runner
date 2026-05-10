@@ -19,14 +19,17 @@ using namespace TestRunnerDetail;
 
 // ================================================================================================
 struct ResolvedProperty {
-	flecs::entity type; // TODO: unused?
-	void* ptr = nullptr; // Actual memory address of the property
+	flecs::entity type;
+	void* ptr = nullptr; // Actual memory of the property
 };
 
 // ================================================================================================
 class ModuleImporter;
 
 // ================================================================================================
+/**
+* Internal implementation of the Test Runner.
+*/
 class TestRunnerImpl {
 public:
 	using TypeImporterMap =
@@ -58,7 +61,6 @@ public:
 			using AutoPrefixedError::AutoPrefixedError;
 		};
 
-		// Tags
 		// ============================================================================================
 		struct Ready {};
 
@@ -75,6 +77,10 @@ public:
 		};
 
 		// ============================================================================================
+		/**
+		* Comparison operator type used to specify the path to component/property 
+		* and the type of the operator itself.
+		*/
 		struct Operator {
 			using Type = OperatorType;
 
@@ -196,7 +202,9 @@ public:
 		// Vector of serialized entities
 		using WorldConfiguration = std::vector<std::string>;
 
-		// Name is unique
+		/**
+		* Name assumed to be unique.
+		*/
 		std::string name;
 
 		Systems systems;
@@ -235,6 +243,9 @@ public:
 	}
 
 	// ==============================================================================================
+	/**
+	* Resolve the list of modules that the systems are from.
+	*/
 	static std::vector<std::string> resolveModules(
 		const flecs::world& world, 
 		const std::vector<std::string>& systemsFullPath
@@ -242,8 +253,9 @@ public:
 
 	// ==============================================================================================
 	/**
-	* Expect path to include component name (first segment).
-	* TODO
+	* Resolve property/component of an entity by path.
+	* @param propertyPath Path of a property/component. 
+  *										  Expects the path to include component name.
 	*/
 	ResolvedProperty resolveProperty(
 		flecs::world& ecs, 
@@ -252,8 +264,8 @@ public:
 	);
 
 	// ==============================================================================================
-	/**
-	* TODO
+  /**
+	* Resolve property of an entity by path.
 	* @param propertyPath Path of a property inside a component definiton.
 	*/
 	ResolvedProperty resolveProperty(
@@ -264,6 +276,9 @@ public:
 	);
 
 	//  =============================================================================================
+	/**
+	* Compare two same properties of two components of the same type.
+	*/
 	bool compareProperty(
 		ecs_world_t* world,
 		ecs_entity_t componentId,
@@ -273,6 +288,9 @@ public:
 	);
 	
 	// ==============================================================================================
+	/**
+	* Compare "actual" vs "expected" worlds.
+	*/
 	bool compareWorlds(
 		flecs::world& actual, 
 		flecs::world& expected, 
@@ -280,10 +298,16 @@ public:
 	);
 	
 	// ==============================================================================================
+	/**
+	* Execute systems in world.
+	*/
 	static void runSystems(const flecs::world& world, const UnitTest::Systems& systems);
 	
 	// ==============================================================================================
-	static void runWorld(
+	/**
+	* Setup world for comparison.
+	*/
+	static void prepareWorld(
 		flecs::world& world, 
 		World type, 
 		const UnitTest& test, 
@@ -291,11 +315,14 @@ public:
 	);
 	
 	// ==============================================================================================
+	/**
+	* Execute a unit test.
+	*/
 	bool runUnitTest(const flecs::world& world, UnitTest& test, OstreamPtr out = nullptr);
 	
 	// ==============================================================================================
 	/**
-	* Returns serialized world 
+	* Execute an "incomplete" unit test. Returns serialized world.
 	*/
 	std::string runUnitTestIncomplete(
 		const flecs::world& world, 
@@ -304,11 +331,17 @@ public:
 	);
 	
 	// ==============================================================================================
+	/**
+	* Deserialize the world configuration into a world.
+	*/
 	static void applyConfiguration(
 		flecs::world& world, UnitTest::WorldConfiguration configuration
 	);
 
 	// ==============================================================================================
+	/**
+	* Find a system entity in world by name.
+	*/
 	static std::optional<flecs::system> getSystemByName(
 		const flecs::world& world, const std::string& systemName
 	);

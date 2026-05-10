@@ -12,6 +12,9 @@
 #include <test_runner/common.h>
 
 // ================================================================================================
+/**
+* Public-facing static class, implementing the complete logic of the test execution.
+*/
 class TestRunner {
 public:
 	using WorldCallback			 = TestRunnerDetail::WorldCallback;
@@ -31,16 +34,20 @@ public:
 
 	// ==============================================================================================
 	/**
-	 * Used to query the available modules in client
-	 */
+	* Used to allow querying for the available modules.
+	*/
 	struct TestableModule{};
 	
 	// ==============================================================================================
-	// To register the module
+	/**
+	* To register as a module with Flecs.
+	*/
 	TestRunner(flecs::world& world);
 
 	// ==============================================================================================
-	// Can pass modules to register
+	/**
+	* Can pass modules during compile time to register.
+	*/
 	template <typename... Ts>
 	static void initialize(
 		flecs::world& world, 
@@ -57,6 +64,9 @@ public:
 	}
 
 	// ==============================================================================================
+	/**
+	* Start the Flecs run loop.
+	*/
 	static int run(flecs::world world) {
 		Log::info() << "Flecs Test Runner listening on port " << ECS_REST_DEFAULT_PORT << " ...";
 		return world.app()
@@ -67,21 +77,32 @@ public:
 
 	// ==============================================================================================
 	/**
-	* Main function.
+	* Main function. Initialize and run.
 	*/
 	template <typename... Ts>
-	static int main(int argc = 0, char* argv[] = nullptr) {
+	static int main(
+		int numThreads = DEFAULT_NUM_THREADS,
+		std::optional<int> profilingBatchSize = std::nullopt,
+		int argc = 0, char* argv[] = nullptr
+	) {
 		flecs::world world(argc, argv);
-		initialize<Ts...>(world);
+		initialize<Ts...>(world, numThreads, profilingBatchSize);
 		return run(world);
 	}
 
+	// ==============================================================================================
+	/**
+	* Register on_equals, on_compare Flecs hooks for multiple components.
+	*/
 	template <typename... Ts>
 	static void registerOperators(flecs::world world) {
 		(registerOperatorsForComponent<Ts>(world), ...);
 	}
 
 	// ==============================================================================================
+	/**
+	* Register on_equals, on_compare Flecs hooks for a component type.
+	*/
 	template <typename T>
 	static void registerOperatorsForComponent(flecs::world& world) {
 		auto compEntity = world.component<T>();
@@ -100,14 +121,18 @@ public:
 	}
 
 	// ==============================================================================================
+	/**
+	* Set desired level of logging.
+	*/
 	static void setLogLevel(LogLevel logLevel);
 
 private:
 	friend class TestRunnerImpl;
 
-	
-
 	// ==============================================================================================
+	/**
+	* Determine supported operators based on the presence of Flecs comparison hooks.
+	*/
 	static SupportedOperators getSupportedOperatorsFromHooks(const ecs_type_info_t& ti) {
 		SupportedOperators result{};
 		result.equals = ti.hooks.equals != NULL && !(ti.hooks.flags & ECS_TYPE_HOOK_EQUALS_ILLEGAL);
@@ -117,8 +142,8 @@ private:
 
 	// ==============================================================================================
 	/**
-	 * Add metadata about supported operators for all components in module T.
-	 */
+	* Register metadata about supported operators for all components in module.
+	*/
 	template <typename T>
 	static void setSupportedOperatorsForModule(flecs::world& world) {
 		flecs::entity moduleEntity = world.module<T>();
@@ -144,6 +169,9 @@ private:
 	}
 
 	// ==============================================================================================
+	/**
+	* Register a testable module with the Test Runner.
+	*/
 	template <typename T>
 	static void registerModule(flecs::world& world) {
 		// Import module to make available for query
@@ -164,6 +192,9 @@ private:
 	}
 
 	// ==============================================================================================
+	/**
+	* Register multiple modules with the Test Runner.
+	*/
 	template <typename... Ts>
 	static void registerModules(flecs::world& world) {
 		(registerModule<Ts>(world), ...);

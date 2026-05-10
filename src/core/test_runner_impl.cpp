@@ -141,7 +141,7 @@ void TestRunnerImpl::applyConfiguration(
 }
 
 // ================================================================================================
-void TestRunnerImpl::runWorld(
+void TestRunnerImpl::prepareWorld(
 	flecs::world& world, 
 	World type, 
 	const TestRunnerImpl::UnitTest& test, 
@@ -207,8 +207,8 @@ bool TestRunnerImpl::runUnitTest(
 	auto modules = resolveModules(world, test.getSystemNames());
 	importer.setUsedModules(modules);
 
-	runWorld(worldActual, World::Actual, test, importer);
-	runWorld(worldExpected, World::Expected, test, importer);
+	prepareWorld(worldActual, World::Actual, test, importer);
+	prepareWorld(worldExpected, World::Expected, test, importer);
 	
 	return compareWorlds(worldActual, worldExpected, test.operators);
 }
@@ -225,7 +225,7 @@ std::string TestRunnerImpl::runUnitTestIncomplete(const flecs::world& world, Uni
 	auto modules = resolveModules(world, test.getSystemNames());
 	importer.setUsedModules(modules);
 
-	runWorld(worldActual, World::Actual, test, importer);
+	prepareWorld(worldActual, World::Actual, test, importer);
 
 	return worldActual.to_json().c_str();
 }

@@ -8,10 +8,6 @@
 using namespace TestRunnerDetail;
 
 // ================================================================================================
-// TestRunner
-// ================================================================================================
-
-// ================================================================================================
 void TestRunner::setLogLevel(LogLevel logLevel) {
   Log::setLevel(logLevel);
 }
@@ -23,6 +19,7 @@ using TestableModule = TestRunner::TestableModule;
 #define TEST_RUNNER_SYSTEM_NAME "TestRunner"
 #define TEST_RUNNER_INCOMPLETE_SYSTEM_NAME TEST_RUNNER_SYSTEM_NAME "Incomplete"
 
+// ================================================================================================
 [[nodiscard]] static std::shared_ptr<RunTestProfiler::Probe> makeProfileScopeProbe(
 	const std::string& testName
 ) {

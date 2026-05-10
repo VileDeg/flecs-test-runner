@@ -83,7 +83,6 @@ enum class OperatorType {
 /**
 * Add as a component to all registered components
 * to capture the presence of comparison hooks.
-* Also add to all primitive value components.
 */
 struct SupportedOperators {
 	bool equals = false;
@@ -155,6 +154,9 @@ private:
 };
 
 // ================================================================================================
+/**
+* Simple profiler to measure execution of a unit test.
+*/
 class RunTestProfiler {
 public:
 	using Clock = std::chrono::steady_clock;
