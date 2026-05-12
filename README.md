@@ -81,8 +81,11 @@ When cmake is called directly, it will **fetch the dependencies** from remote Gi
 ```ps
 cmake -S . -B build/
 ```
-
 Output is a **static library**.
+
+### Local overrides
+
+For build with local overrides for Cmake's `FETCH_CONTENT` you can use `build.ps1`.
 
 ## Known limitations
 
