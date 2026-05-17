@@ -6,6 +6,10 @@ This the core implementation of the **Flecs Test Runner (FTR)**.
 
 - C++ (at least C++17).
 
+## Supported platforms
+
+- Windows, Linux, MacOS
+
 ## Usage
 
 To include **FTR** into your project, see this example of `CmakeLists.txt`:
