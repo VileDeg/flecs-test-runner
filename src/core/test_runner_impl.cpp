@@ -172,11 +172,11 @@ std::vector<std::string> TestRunnerImpl::resolveModules(
 			throw Error("System " + path + " has no parent");
 		}
 
-		std::string moduleFullPath = module.name();
+		std::string moduleFullPath{ module.name() };
 
 		module = module.parent();
 		while (module) {
-			std::string prefix = module.name();
+			std::string prefix{ module.name() };
 			prefix += "::";
 			moduleFullPath = prefix + moduleFullPath;
 

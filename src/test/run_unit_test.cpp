@@ -24,7 +24,9 @@ protected:
 
 static const char* move_Speed_Vector = "movement::module::moveVector_Speed";
 
+//static const std::string POS_VECTOR = "PositionVector";
 static const std::string POS_VECTOR = TypeInfo<PositionVector>::getName();
+
 static const std::string POS_VECTOR_DATA = "data";
 
 const std::vector<std::string> testPaths = { "", "data", "data/0", "data/0/x" };
@@ -111,8 +113,13 @@ static std::vector<T> generateTests(
 ) {
 	std::vector<T> generated;
 
+	std::cout << "TEST_MODULE_NAME: " << TEST_MODULE_NAME << "\n";
+	std::cout << "ENTITY_NAME: " << ENTITY_NAME << "\n";
+
+
 	// Cartesian product of paths X operators
 	for (const auto& path : terms.paths) {
+		std::cout << "PRINT PATH: " << path << "\n";
 		for (const auto& op : terms.ops) {
 			generated.push_back(
 				{

@@ -51,14 +51,14 @@ using MyTypes = ::testing::Types<
 TYPED_TEST_SUITE(ComponentMetadataTest, MyTypes);
 
 TYPED_TEST(ComponentMetadataTest, Exists) {
-	flecs::entity comp = _ecs.entity<TypeParam>();
+	flecs::entity comp = this->_ecs.template entity<TypeParam>();
 	auto* ops = comp.try_get<SupportedOperators>();
 
 	EXPECT_NE(ops, nullptr);
 }
 
 TYPED_TEST(ComponentMetadataTest, HasOps) {
-	flecs::entity comp = _ecs.entity<TypeParam>();
+	flecs::entity comp = this->_ecs.template entity<TypeParam>();
 	auto& ops = comp.get<SupportedOperators>();
 	EXPECT_TRUE(ops.cmp);
 	EXPECT_TRUE(ops.equals);

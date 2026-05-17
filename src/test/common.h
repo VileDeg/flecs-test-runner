@@ -15,7 +15,8 @@ using UnitTest = tri::UnitTest;
 using Operator = UnitTest::Operator;
 using OpType = OperatorType;
 
-static const std::string TEST_MODULE_NAME = "movement.module";
+#define TEST_MODULE_NAME "movement.module"
+
 
 template <typename T>
 struct TypeInfo;
@@ -24,7 +25,7 @@ struct TypeInfo;
 template <>\
 struct TypeInfo<_Comp> {\
     static const std::string& getName() {\
-        static const std::string name = TEST_MODULE_NAME + "." + _Name;\
+        static const std::string name = std::string{ TEST_MODULE_NAME "." } + _Name;\
         return name;\
     }\
 };

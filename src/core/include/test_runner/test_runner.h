@@ -105,7 +105,7 @@ public:
 	*/
 	template <typename T>
 	static void registerOperatorsForComponent(flecs::world& world) {
-		auto compEntity = world.component<T>();
+		flecs::entity compEntity = world.component<T>();
 
 		ecs_cmp_t cmpHandler = flecs::_::compare<T>();
 		ecs_equals_t equalsHandler = flecs::_::equals<T>();
@@ -175,7 +175,7 @@ private:
 	template <typename T>
 	static void registerModule(flecs::world& world) {
 		// Import module to make available for query
-		auto m = world.import<T>();
+		flecs::entity m = world.import<T>();
 		m.add<TestableModule>();
 
 		// Set for all contained components.

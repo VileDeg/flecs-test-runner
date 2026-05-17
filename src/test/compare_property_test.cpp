@@ -33,19 +33,19 @@ protected:
 	}
 
 	flecs::entity AddEntity(std::optional<std::string> name = std::nullopt) {
-		auto e = name ? _ecs.entity(name->c_str()) : _ecs.entity();
+		flecs::entity e = name ? _ecs.entity(name->c_str()) : _ecs.entity();
 		e.add<TestComponent>();
 		return e;
 	}
 
 	flecs::entity AddEntity(const TestComponent& comp, std::optional<std::string> name = std::nullopt) {
-		auto e = name ? _ecs.entity(name->c_str()) : _ecs.entity();
+		flecs::entity e = name ? _ecs.entity(name->c_str()) : _ecs.entity();
 		e.set<TestComponent>(comp);
 		return e;
 	}
 
 	flecs::entity AddEntity(flecs::world& world, std::optional<std::string> name = std::nullopt) {
-		auto e = name ? world.entity(name->c_str()) : world.entity();
+		flecs::entity e = name ? world.entity(name->c_str()) : world.entity();
 		e.add<TestComponent>();
 		return e;
 	}

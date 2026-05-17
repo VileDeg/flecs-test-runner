@@ -13,44 +13,13 @@
 #include <fstream>
 #include <ctime>
 #include <iomanip>
+#include <memory>
 
 #include <flecs.h>
 
 namespace TestRunnerDetail {
 
-#if 0
-
-// This handles the difference between Windows (MSVC) and Linux/Mac (GCC/Clang)
-#if defined(_MSC_VER) // Windows
-#include <typeinfo>
-template <typename T>
-static std::string getTypeName() {
-	std::string name = typeid(T).name();
-	// MSVC returns "struct MyModule" or "class MyModule". 
-	// We remove the prefix to get just "MyModule".
-	size_t space_pos = name.find(' ');
-	if (space_pos != std::string::npos) {
-		return name.substr(space_pos + 1);
-	}
-	return name;
-}
-#else // Linux / macOS / GCC / Clang
-#include <cxxabi.h>
-#include <typeinfo>
-#include <memory>
-template <typename T>
-static std::string getTypeName() {
-	int status;
-	// specific GCC/Clang API to "demangle" the weird internal names
-	std::unique_ptr<char, void(*)(void*)> res{
-			abi::__cxa_demangle(typeid(T).name(), nullptr, nullptr, &status),
-			std::free
-	};
-	return (status == 0) ? res.get() : typeid(T).name();
-}
-#endif
-#else 
-	// Source - https://stackoverflow.com/a/64490578
+// Source - https://stackoverflow.com/a/64490578
 // Posted by einpoklum, modified by community. See post 'Timeline' for change history
 // Retrieved 2026-05-17, License - CC BY-SA 4.0
 
@@ -61,135 +30,70 @@ static std::string getTypeName() {
 #  include <source_location>
 #endif
 
-	template <typename T> constexpr std::string_view type_name();
+template <typename T> constexpr std::string_view type_name();
 
-	template <>
-	constexpr std::string_view type_name<void>()
+template <>
+constexpr std::string_view type_name<void>()
+{
+	return "void";
+}
+
+namespace detail {
+
+	using type_name_prober = void;
+
+	template <typename T>
+	constexpr std::string_view wrapped_type_name()
 	{
-		return "void";
-	}
-
-	namespace detail {
-
-		using type_name_prober = void;
-
-		template <typename T>
-		constexpr std::string_view wrapped_type_name()
-		{
 #if __cplusplus >= 202002L
-			return std::source_location::current().function_name();
+		return std::source_location::current().function_name();
 #else
 #  if defined(__clang__) || defined(__GNUC__)
-			return __PRETTY_FUNCTION__;
+		return __PRETTY_FUNCTION__;
 #  elif defined(_MSC_VER)
-			return __FUNCSIG__;
+		return __FUNCSIG__;
 #  else
 #    error "Unsupported compiler"
 #  endif
 #endif // __cplusplus >= 202002L
-		}
-
-		constexpr std::size_t wrapped_type_name_prefix_length()
-		{
-			return wrapped_type_name<type_name_prober>()
-				.find(type_name<type_name_prober>());
-		}
-
-		constexpr std::size_t wrapped_type_name_suffix_length()
-		{
-			return wrapped_type_name<type_name_prober>().length()
-				- wrapped_type_name_prefix_length()
-				- type_name<type_name_prober>().length();
-		}
-
-	} // namespace detail
-
-	template <typename T>
-	constexpr std::string_view type_name()
-	{
-		constexpr auto wrapped_name = detail::wrapped_type_name<T>();
-		constexpr auto prefix_length = detail::wrapped_type_name_prefix_length();
-		constexpr auto suffix_length = detail::wrapped_type_name_suffix_length();
-		constexpr auto type_name_length =
-			wrapped_name.length() - prefix_length - suffix_length;
-		return wrapped_name.substr(prefix_length, type_name_length);
 	}
 
-	template <typename T>
-	constexpr std::string_view getTypeName() { return type_name<T>(); }
-	  
+	constexpr std::size_t wrapped_type_name_prefix_length()
+	{
+		return wrapped_type_name<type_name_prober>()
+			.find(type_name<type_name_prober>());
+	}
 
+	constexpr std::size_t wrapped_type_name_suffix_length()
+	{
+		return wrapped_type_name<type_name_prober>().length()
+			- wrapped_type_name_prefix_length()
+			- type_name<type_name_prober>().length();
+	}
 
-	// Source - https://stackoverflow.com/a/20170989
-// Posted by Howard Hinnant, modified by community. See post 'Timeline' for change history
-// Retrieved 2026-05-17, License - CC BY-SA 4.0
+} // namespace detail
 
-	// Source - https://stackoverflow.com/a/56766138
-// Posted by 康桓瑋, modified by community. See post 'Timeline' for change history
-// Retrieved 2026-05-17, License - CC BY-SA 4.0
+template <typename T>
+constexpr std::string_view type_name()
+{
+	constexpr auto wrapped_name = detail::wrapped_type_name<T>();
+	constexpr auto prefix_length = detail::wrapped_type_name_prefix_length();
+	constexpr auto suffix_length = detail::wrapped_type_name_suffix_length();
+	constexpr auto type_name_length =
+		wrapped_name.length() - prefix_length - suffix_length;
+	return wrapped_name.substr(prefix_length, type_name_length);
+}
 
-//#include <string_view>
-//
-//	template <typename T>
-//	constexpr auto getTypeName() {
-//		std::string_view name, prefix, suffix;
-//#ifdef __clang__
-//		name = __PRETTY_FUNCTION__;
-//		prefix = "auto getTypeName() [T = ";
-//		suffix = "]";
-//#elif defined(__GNUC__)
-//		name = __PRETTY_FUNCTION__;
-//		prefix = "constexpr auto getTypeName() [with T = ";
-//		suffix = "]";
-//#elif defined(_MSC_VER)
-//		name = __FUNCSIG__;
-//		prefix = "auto __cdecl getTypeName<";
-//		suffix = ">(void)";
-//#endif
-//		name.remove_prefix(prefix.size());
-//		name.remove_suffix(suffix.size());
-//		return name;
-//	}
+template <typename T>
+constexpr std::string_view getTypeName() { 
+	auto full = type_name<T>();
 
-
-//#include <type_traits>
-//#include <typeinfo>
-//#ifndef _MSC_VER
-//#   include <cxxabi.h>
-//#endif
-//#include <memory>
-//#include <string>
-//#include <cstdlib>
-//
-//	template <class T>
-//	std::string
-//		getTypeName()
-//	{
-//		typedef typename std::remove_reference<T>::type TR;
-//		std::unique_ptr<char, void(*)(void*)> own
-//		(
-//#ifndef _MSC_VER
-//			abi::__cxa_demangle(typeid(TR).name(), nullptr,
-//				nullptr, nullptr),
-//#else
-//			nullptr,
-//#endif
-//			std::free
-//		);
-//		std::string r = own != nullptr ? own.get() : typeid(TR).name();
-//		if (std::is_const<TR>::value)
-//			r += " const";
-//		if (std::is_volatile<TR>::value)
-//			r += " volatile";
-//		if (std::is_lvalue_reference<T>::value)
-//			r += "&";
-//		else if (std::is_rvalue_reference<T>::value)
-//			r += "&&";
-//		return r;
-//	}
-
-
-#endif
+	size_t space_pos = full.find(' ');
+	if (space_pos != std::string::npos) {
+		return full.substr(space_pos + 1);
+	}
+	return full;
+}
 
 // ================================================================================================
 template <typename Derived>
@@ -337,9 +241,6 @@ private:
 
 	static void record(const std::string& name, double duration) {
 		_results[name] = duration;
-
-		//std::cout << "\nTest Name,Duration (ns)\n";
-		//std::cout << name + "," + std::to_string(duration) + "\n";
 
 		if (_results.size() == _targetCount) {
 			generateReport();
