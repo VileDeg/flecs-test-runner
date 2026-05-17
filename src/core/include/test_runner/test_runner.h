@@ -182,7 +182,7 @@ private:
 		// For primitive types assume all ops are supported.
 		setSupportedOperatorsForModule<T>(world);
 
-		std::string name = TestRunnerDetail::getTypeName<T>();
+		std::string name = std::string{ TestRunnerDetail::getTypeName<T>() } ;
 
 		Log::trace() << "Registered module \"" << name << "\"";
 		// Store in map to allow for later import in test world

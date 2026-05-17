@@ -1,5 +1,3 @@
-#pragma once
-
 #include <test_runner/test_runner.h>
 #include <test_runner/common.h>
 
