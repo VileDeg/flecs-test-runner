@@ -91,6 +91,7 @@ For build with local overrides for Cmake's `FETCH_CONTENT` you can use `build.ps
 
 - Entity names in the test configurations must be unique.   
   - The names are used to define comparison operator paths, thus need to be unique.
+- Components holding reference/pointer attributes are **unsupported**. 
 
 ## Future improvements
 
